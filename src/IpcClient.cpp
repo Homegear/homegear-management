@@ -40,6 +40,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("configAptUpgrade", std::bind(&IpcClient::aptUpgrade, this, std::placeholders::_1));
     _localRpcMethods.emplace("configAptFullUpgrade", std::bind(&IpcClient::aptFullUpgrade, this, std::placeholders::_1));
     _localRpcMethods.emplace("configServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
+    _localRpcMethods.emplace("configReboot", std::bind(&IpcClient::reboot, this, std::placeholders::_1));
 }
 
 IpcClient::~IpcClient()
@@ -143,6 +144,21 @@ void IpcClient::onConnect()
         {
             error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method configServiceCommand: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("configReboot"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method configReboot: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -346,6 +362,39 @@ Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
 
         if(_commandThread.joinable()) _commandThread.join();
         _commandThread = std::thread(&IpcClient::executeCommand, this, "service " + parameters->at(0)->stringValue + " " + parameters->at(1)->stringValue);
+
+        return std::make_shared<Ipc::Variable>();
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    _commandStatus = -1;
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::reboot(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        {
+            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
+            _commandStatus = 1;
+            _commandOutput = "";
+        }
+
+        if(_commandThread.joinable()) _commandThread.join();
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "reboot");
 
         return std::make_shared<Ipc::Variable>();
     }

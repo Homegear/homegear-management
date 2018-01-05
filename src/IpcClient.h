@@ -61,6 +61,7 @@ private:
     Ipc::PVariable aptUpgrade(Ipc::PArray& parameters);
     Ipc::PVariable aptFullUpgrade(Ipc::PArray& parameters);
     Ipc::PVariable serviceCommand(Ipc::PArray& parameters);
+    Ipc::PVariable reboot(Ipc::PArray& parameters);
     // }}}
 };
 
