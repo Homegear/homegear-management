@@ -1,0 +1,5 @@
+# Exception was added to license to allow linking with OpenSSL
+homegear-management binary: possible-gpl-code-linked-with-openssl
+
+# We use insserv. Override doesn't work, type is probably wrong.
+homegear-management source: script-in-etc-init.d-not-registered-via-update-rc.d

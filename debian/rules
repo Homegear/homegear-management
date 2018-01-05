@@ -1,0 +1,31 @@
+#!/usr/bin/make -f
+
+override_dh_auto_configure:
+	dh_auto_configure -- --with-curl
+
+override_dh_auto_install:
+	dh_auto_install
+
+	mkdir -p $(CURDIR)/debian/homegear-management/etc/homegear
+	cp -R $(CURDIR)/misc/Config\ Directory/management.conf $(CURDIR)/debian/homegear-management/etc/homegear
+	chmod 644 $(CURDIR)/debian/homegear-management/etc/homegear/management.conf
+
+	mkdir -p $(CURDIR)/debian/homegear-management/etc/init.d
+	cp $(CURDIR)/misc/System\ Config/homegear-management.init $(CURDIR)/debian/homegear-management/etc/init.d/homegear-management
+	chown root:root $(CURDIR)/debian/homegear-management/etc/init.d/homegear-management
+	chmod 755 $(CURDIR)/debian/homegear-management/etc/init.d/homegear-management
+	mkdir -p $(CURDIR)/debian/homegear-management/lib/systemd/system
+	cp $(CURDIR)/misc/System\ Config/homegear-management.service $(CURDIR)/debian/homegear-management/lib/systemd/system/
+	chown root:root $(CURDIR)/debian/homegear-management/lib/systemd/system/homegear-management.service
+	chmod 644 $(CURDIR)/debian/homegear-management/lib/systemd/system/homegear-management.service
+
+	mkdir -p $(CURDIR)/debian/homegear-management/etc/logrotate.d
+	cp $(CURDIR)/misc/System\ Config/logrotate $(CURDIR)/debian/homegear-management/etc/logrotate.d/homegear-management
+	chown root:root $(CURDIR)/debian/homegear-management/etc/logrotate.d/homegear-management
+	chmod 644 $(CURDIR)/debian/homegear-management/etc/logrotate.d/homegear-management
+
+override_dh_strip:
+	dh_strip --dbg-package=homegear-management
+
+%:
+	dh $@ --parallel
