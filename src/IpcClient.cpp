@@ -35,12 +35,12 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
     _commandThreadRunning = false;
 
-    _localRpcMethods.emplace("configGetCommandStatus", std::bind(&IpcClient::getCommandStatus, this, std::placeholders::_1));
-    _localRpcMethods.emplace("configAptUpdate", std::bind(&IpcClient::aptUpdate, this, std::placeholders::_1));
-    _localRpcMethods.emplace("configAptUpgrade", std::bind(&IpcClient::aptUpgrade, this, std::placeholders::_1));
-    _localRpcMethods.emplace("configAptFullUpgrade", std::bind(&IpcClient::aptFullUpgrade, this, std::placeholders::_1));
-    _localRpcMethods.emplace("configServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
-    _localRpcMethods.emplace("configReboot", std::bind(&IpcClient::reboot, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementGetCommandStatus", std::bind(&IpcClient::getCommandStatus, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementAptUpdate", std::bind(&IpcClient::aptUpdate, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementAptUpgrade", std::bind(&IpcClient::aptUpgrade, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementAptFullUpgrade", std::bind(&IpcClient::aptFullUpgrade, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementReboot", std::bind(&IpcClient::reboot, this, std::placeholders::_1));
 }
 
 IpcClient::~IpcClient()
@@ -56,7 +56,7 @@ void IpcClient::onConnect()
 
         Ipc::PArray parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("configGetCommandStatus"));
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementGetCommandStatus"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         Ipc::PVariable signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
         signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Return value
@@ -65,7 +65,37 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             error = true;
-            Ipc::Output::printCritical("Critical: Could not register RPC method configGetCommandStatus: " + result->structValue->at("faultString")->stringValue);
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementGetCommandStatus: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpgrade"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpgrade: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpdate"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpdate: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -80,37 +110,7 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             error = true;
-            Ipc::Output::printCritical("Critical: Could not register RPC method configAptUpgrade: " + result->structValue->at("faultString")->stringValue);
-        }
-        if (error) return;
-
-        parameters = std::make_shared<Ipc::Array>();
-        parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("configAptUpdate"));
-        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
-        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
-        parameters->back()->arrayValue->push_back(signature);
-        result = invoke("registerRpcMethod", parameters);
-        if (result->errorStruct)
-        {
-            error = true;
-            Ipc::Output::printCritical("Critical: Could not register RPC method configAptUpdate: " + result->structValue->at("faultString")->stringValue);
-        }
-        if (error) return;
-
-        parameters = std::make_shared<Ipc::Array>();
-        parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("configAptUpgrade"));
-        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
-        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
-        parameters->back()->arrayValue->push_back(signature);
-        result = invoke("registerRpcMethod", parameters);
-        if (result->errorStruct)
-        {
-            error = true;
-            Ipc::Output::printCritical("Critical: Could not register RPC method configAptUpgrade: " + result->structValue->at("faultString")->stringValue);
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpgrade: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -125,7 +125,7 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             error = true;
-            Ipc::Output::printCritical("Critical: Could not register RPC method configAptFullUpgrade: " + result->structValue->at("faultString")->stringValue);
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptFullUpgrade: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -143,13 +143,13 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             error = true;
-            Ipc::Output::printCritical("Critical: Could not register RPC method configServiceCommand: " + result->structValue->at("faultString")->stringValue);
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementServiceCommand: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("configReboot"));
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementReboot"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
         signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
@@ -158,7 +158,7 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             error = true;
-            Ipc::Output::printCritical("Critical: Could not register RPC method configReboot: " + result->structValue->at("faultString")->stringValue);
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementReboot: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
