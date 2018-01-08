@@ -56,12 +56,16 @@ private:
     void executeCommand(std::string command);
 
     // {{{ RPC methods
-    Ipc::PVariable getCommandStatus(Ipc::PArray& parameters);
     Ipc::PVariable aptUpdate(Ipc::PArray& parameters);
     Ipc::PVariable aptUpgrade(Ipc::PArray& parameters);
     Ipc::PVariable aptFullUpgrade(Ipc::PArray& parameters);
-    Ipc::PVariable serviceCommand(Ipc::PArray& parameters);
+    Ipc::PVariable dpkgPackageInstalled(Ipc::PArray& parameters);
+    Ipc::PVariable getCommandStatus(Ipc::PArray& parameters);
+    Ipc::PVariable getConfigurationEntry(Ipc::PArray& parameters);
     Ipc::PVariable reboot(Ipc::PArray& parameters);
+    Ipc::PVariable serviceCommand(Ipc::PArray& parameters);
+    Ipc::PVariable setConfigurationEntry(Ipc::PArray& parameters);
+    Ipc::PVariable writeCloudMaticConfig(Ipc::PArray& parameters);
     // }}}
 };
 

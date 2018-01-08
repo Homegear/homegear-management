@@ -28,6 +28,7 @@
  * files in the program, then also delete it here.
 */
 
+#include <sys/stat.h>
 #include "IpcClient.h"
 #include "GD.h"
 
@@ -35,12 +36,16 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
     _commandThreadRunning = false;
 
-    _localRpcMethods.emplace("managementGetCommandStatus", std::bind(&IpcClient::getCommandStatus, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptUpdate", std::bind(&IpcClient::aptUpdate, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptUpgrade", std::bind(&IpcClient::aptUpgrade, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptFullUpgrade", std::bind(&IpcClient::aptFullUpgrade, this, std::placeholders::_1));
-    _localRpcMethods.emplace("managementServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementDpkgPackageInstalled", std::bind(&IpcClient::dpkgPackageInstalled, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementGetCommandStatus", std::bind(&IpcClient::getCommandStatus, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementGetConfigurationEntry", std::bind(&IpcClient::getConfigurationEntry, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementSetConfigurationEntry", std::bind(&IpcClient::setConfigurationEntry, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementReboot", std::bind(&IpcClient::reboot, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementWriteCloudMaticConfig", std::bind(&IpcClient::writeCloudMaticConfig, this, std::placeholders::_1));
 }
 
 IpcClient::~IpcClient()
@@ -101,7 +106,7 @@ void IpcClient::onConnect()
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("configAptUpgrade"));
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpgrade"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
         signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
@@ -116,7 +121,7 @@ void IpcClient::onConnect()
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("configAptFullUpgrade"));
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptFullUpgrade"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
         signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
@@ -131,7 +136,24 @@ void IpcClient::onConnect()
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("configServiceCommand"));
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementDpkgPackageInstalled"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //1st parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementDpkgPackageInstalled: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementServiceCommand"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
         signature->arrayValue->reserve(3);
@@ -339,6 +361,39 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
+Ipc::PVariable IpcClient::dpkgPackageInstalled(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+
+        auto package = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+
+        std::string output;
+        _commandStatus = BaseLib::HelperFunctions::exec("dpkg-query -W -f '${db:Status-Abbrev}|${binary:Package}\\n' '*' 2>/dev/null | grep '^ii' | awk -F '|' '{print $2}' | cut -d ':' -f 1 | grep ^" + package + "$", output);
+
+        if(_commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+
+        BaseLib::HelperFunctions::trim(output);
+
+        return std::make_shared<Ipc::Variable>(output == package);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
 Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
 {
     try
@@ -411,6 +466,108 @@ Ipc::PVariable IpcClient::reboot(Ipc::PArray& parameters)
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     _commandStatus = -1;
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::getConfigurationEntry(Ipc::PArray& parameters)
+{
+    try
+    {
+
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
+{
+    try
+    {
+
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 5) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+        if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type String.");
+        if(parameters->at(2)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 3 is not of type String.");
+        if(parameters->at(3)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 4 is not of type String.");
+        if(parameters->at(4)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 5 is not of type String.");
+
+        if(!BaseLib::Io::directoryExists("/etc/openvpn/")) return Ipc::Variable::createError(-2, "Directory /etc/openvpn does not exist.");
+
+        std::string cloudMaticCertPath = "/etc/openvpn/cloudmatic/";
+        if(!BaseLib::Io::directoryExists(cloudMaticCertPath)) BaseLib::Io::createDirectory(cloudMaticCertPath, S_IRWXU | S_IRGRP | S_IXGRP);
+        if(chown(cloudMaticCertPath.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
+        if(chmod(cloudMaticCertPath.c_str(), S_IRWXU | S_IRWXG) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+
+        std::string filename = "/etc/openvpn/cloudmatic.conf";
+        BaseLib::Io::writeFile(filename, parameters->at(0)->stringValue);
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+
+        filename = "/etc/openvpn/mhcfg.conf";
+        BaseLib::Io::writeFile(filename, parameters->at(1)->stringValue);
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+
+        filename = "/etc/openvpn/cloudmatic/mhca.crt";
+        BaseLib::Io::writeFile(filename, parameters->at(2)->stringValue);
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+
+        filename = "/etc/openvpn/cloudmatic/client.crt";
+        BaseLib::Io::writeFile(filename, parameters->at(3)->stringValue);
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+
+        filename = "/etc/openvpn/cloudmatic/client.key";
+        BaseLib::Io::writeFile(filename, parameters->at(4)->stringValue);
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+
+        return std::make_shared<Ipc::Variable>();
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 // }}}
