@@ -184,6 +184,27 @@ void IpcClient::onConnect()
         }
         if (error) return;
 
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementWriteCloudMaticConfig"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(6);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementWriteCloudMaticConfig: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
         GD::out.printInfo("Info: RPC methods successfully registered.");
     }
     catch (const std::exception& ex)
@@ -534,7 +555,7 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
         if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
         if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
 
-        filename = "/etc/openvpn/mhcfg.conf";
+        filename = "/etc/openvpn/mhcfg";
         BaseLib::Io::writeFile(filename, parameters->at(1)->stringValue);
         if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
         if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
@@ -553,6 +574,9 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
         BaseLib::Io::writeFile(filename, parameters->at(4)->stringValue);
         if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
         if(chmod(filename.c_str(), S_IRUSR | S_IWUSR) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+
+        std::string output;
+        BaseLib::HelperFunctions::exec("/bin/sed -i 's/\/usr\/local\/etc\/config\/addons\/mh/\/etc\/openvpn\/cloudmatic/' /etc/openvpn/cloudmatic.conf", output);
 
         return std::make_shared<Ipc::Variable>();
     }
