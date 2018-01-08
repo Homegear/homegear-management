@@ -576,7 +576,7 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
         if(chmod(filename.c_str(), S_IRUSR | S_IWUSR) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
 
         std::string output;
-        BaseLib::HelperFunctions::exec("/bin/sed -i 's/\/usr\/local\/etc\/config\/addons\/mh/\/etc\/openvpn\/cloudmatic/' /etc/openvpn/cloudmatic.conf", output);
+        BaseLib::HelperFunctions::exec("/bin/sed -i 's/\\/usr\\/local\\/etc\\/config\\/addons\\/mh/\\/etc\\/openvpn\\/cloudmatic/' /etc/openvpn/cloudmatic.conf", output);
 
         return std::make_shared<Ipc::Variable>();
     }
