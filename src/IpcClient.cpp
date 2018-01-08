@@ -437,7 +437,7 @@ Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
         if(allowedServiceCommands.find(parameters->at(1)->stringValue) == allowedServiceCommands.end()) return Ipc::Variable::createError(-2, "This command is not in the list of allowed service commands.");
 
         if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "service " + parameters->at(0)->stringValue + " " + parameters->at(1)->stringValue);
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "systemctl " + parameters->at(1)->stringValue + " " + parameters->at(0)->stringValue);
 
         return std::make_shared<Ipc::Variable>();
     }
