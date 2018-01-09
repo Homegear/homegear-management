@@ -153,6 +153,24 @@ void IpcClient::onConnect()
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementGetConfigurationEntry"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(3);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementGetConfigurationEntry: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
         parameters->push_back(std::make_shared<Ipc::Variable>("managementServiceCommand"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
@@ -181,6 +199,25 @@ void IpcClient::onConnect()
         {
             error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementReboot: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementSetConfigurationEntry"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(4);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementSetConfigurationEntry: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -494,7 +531,25 @@ Ipc::PVariable IpcClient::getConfigurationEntry(Ipc::PArray& parameters)
 {
     try
     {
+        if(parameters->size() != 2) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+        if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type String.");
 
+        auto& settingsWhitelist = GD::settings.settingsWhitelist();
+
+        auto fileIterator = settingsWhitelist.find(parameters->at(0)->stringValue);
+        if(fileIterator == settingsWhitelist.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this file.");
+
+        auto settingIterator = fileIterator->second.find(parameters->at(1)->stringValue);
+        if(settingIterator == fileIterator->second.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this setting.");
+
+        std::string output;
+        BaseLib::HelperFunctions::exec("cat /etc/homegear/" + parameters->at(0)->stringValue + " | grep \"^" + parameters->at(1)->stringValue + " \"", output);
+
+        BaseLib::HelperFunctions::trim(output);
+        auto settingPair = BaseLib::HelperFunctions::splitFirst(output, '=');
+        BaseLib::HelperFunctions::trim(settingPair.second);
+        return std::make_shared<Ipc::Variable>(settingPair.second);
     }
     catch (const std::exception& ex)
     {
@@ -515,7 +570,23 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
 {
     try
     {
+        if(parameters->size() != 3) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+        if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type String.");
+        if(parameters->at(2)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 3 is not of type String.");
 
+        auto& settingsWhitelist = GD::settings.settingsWhitelist();
+
+        auto fileIterator = settingsWhitelist.find(parameters->at(0)->stringValue);
+        if(fileIterator == settingsWhitelist.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this file.");
+
+        auto settingIterator = fileIterator->second.find(parameters->at(1)->stringValue);
+        if(settingIterator == fileIterator->second.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this setting.");
+
+        std::string output;
+        BaseLib::HelperFunctions::exec("sed -i \"s/^" + parameters->at(1)->stringValue + " .*/" + parameters->at(1)->stringValue + " = " + parameters->at(2)->stringValue + "/g\" /etc/homegear/" + parameters->at(0)->stringValue, output);
+
+        return std::make_shared<Ipc::Variable>();
     }
     catch (const std::exception& ex)
     {
@@ -574,9 +645,6 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
         BaseLib::Io::writeFile(filename, parameters->at(4)->stringValue);
         if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
         if(chmod(filename.c_str(), S_IRUSR | S_IWUSR) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
-
-        std::string output;
-        BaseLib::HelperFunctions::exec("/bin/sed -i 's/\\/usr\\/local\\/etc\\/config\\/addons\\/mh/\\/etc\\/openvpn\\/cloudmatic/' /etc/openvpn/cloudmatic.conf", output);
 
         return std::make_shared<Ipc::Variable>();
     }

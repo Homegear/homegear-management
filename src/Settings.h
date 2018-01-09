@@ -50,8 +50,9 @@ public:
 	std::string workingDirectory() { return _workingDirectory; }
 	std::string logfilePath() { return _logfilePath; }
 	uint32_t secureMemorySize() { return _secureMemorySize; }
-    std::set<std::string> allowedServiceCommands() { return _allowedServiceCommands; }
-    std::set<std::string> controllableServices() { return _controllableServices; }
+    std::unordered_set<std::string> allowedServiceCommands() { return _allowedServiceCommands; }
+    std::unordered_set<std::string> controllableServices() { return _controllableServices; }
+	std::unordered_map<std::string, std::unordered_set<std::string>>& settingsWhitelist() { return _settingsWhitelist; }
 private:
 	std::string _executablePath;
 	std::string _path;
@@ -66,8 +67,9 @@ private:
 	std::string _workingDirectory;
 	std::string _logfilePath;
 	uint32_t _secureMemorySize = 65536;
-    std::set<std::string> _allowedServiceCommands;
-    std::set<std::string> _controllableServices;
+    std::unordered_set<std::string> _allowedServiceCommands;
+    std::unordered_set<std::string> _controllableServices;
+    std::unordered_map<std::string, std::unordered_set<std::string>> _settingsWhitelist;
 
 	void reset();
 };

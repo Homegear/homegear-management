@@ -48,6 +48,7 @@ void Settings::reset()
 	_secureMemorySize = 65536;
     _allowedServiceCommands.clear();
     _controllableServices.clear();
+    _settingsWhitelist.clear();
 }
 
 bool Settings::changed()
@@ -174,6 +175,17 @@ void Settings::load(std::string filename, std::string executablePath)
                     {
                         GD::bl->hf.trim(element);
                         _controllableServices.emplace(element);
+                    }
+                    GD::bl->out.printDebug("Debug: controllableServices was set");
+                }
+                else if(name == "settingswhitelist")
+                {
+                    std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
+                    GD::bl->hf.trim(elements.at(0));
+                    for(uint32_t i = 0; i < elements.size(); i++)
+                    {
+                        GD::bl->hf.trim(elements.at(i));
+                        _settingsWhitelist[elements.at(0)].emplace(elements.at(i));
                     }
                     GD::bl->out.printDebug("Debug: controllableServices was set");
                 }
