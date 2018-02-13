@@ -176,7 +176,7 @@ void getExecutablePath(int argc, char* argv[])
 	}
 	if((unsigned)length > sizeof(path))
 	{
-		std::cerr << "The path the homegear binary is in has more than 1024 characters." << std::endl;
+		std::cerr << "The path to the binary is in has more than 1024 characters." << std::endl;
 		exit(1);
 	}
 	path[length] = '\0';
@@ -184,9 +184,9 @@ void getExecutablePath(int argc, char* argv[])
 	GD::executablePath = GD::executablePath.substr(0, GD::executablePath.find_last_of("/") + 1);
 #endif
 
-	GD::executableFile = std::string(argc > 0 ? argv[0] : "homegear");
+	GD::executableFile = std::string(argc > 0 ? argv[0] : "homegear-management");
 	BaseLib::HelperFunctions::trim(GD::executableFile);
-	if(GD::executableFile.empty()) GD::executableFile = "homegear";
+	if(GD::executableFile.empty()) GD::executableFile = "homegear-management";
 	std::pair<std::string, std::string> pathNamePair = BaseLib::HelperFunctions::splitLast(GD::executableFile, '/');
 	if(!pathNamePair.second.empty()) GD::executableFile = pathNamePair.second;
 }
