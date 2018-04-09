@@ -403,7 +403,7 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
 
         {
             std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 1;
+            _commandStatus = 256;
             _commandOutput = "";
         }
 
@@ -437,7 +437,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
 
         {
             std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 1;
+            _commandStatus = 256;
             _commandOutput = "";
         }
 
@@ -471,7 +471,7 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
 
         {
             std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 1;
+            _commandStatus = 256;
             _commandOutput = "";
         }
 
@@ -504,7 +504,7 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
 
         {
             std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 1;
+            _commandStatus = 256;
             _commandOutput = "";
         }
 
@@ -512,7 +512,7 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
         std::string file = "/tmp/" + std::to_string(time) + "_homegear-backup.tar.gz";
 
         if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "tar -zcpf " + file + " /etc/homegear /data/homegear-data");
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "/var/lib/homegear/scripts/BackupHomegear.sh " + file);
 
         return std::make_shared<Ipc::Variable>(file);
     }
@@ -542,14 +542,12 @@ Ipc::PVariable IpcClient::restoreBackup(Ipc::PArray& parameters)
 
         {
             std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 1;
+            _commandStatus = 256;
             _commandOutput = "";
         }
 
-        auto time = BaseLib::HelperFunctions::getTimeSeconds();
-
         if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "service homegear stop;TEMPDIR=`mktemp -d`;tar -zxf \"" + parameters->at(0)->stringValue + "\" -C $TEMPDIR;if test ! -d $TEMPDIR/etc/homegear || test ! -f $TEMPDIR/etc/homegear/main.conf || test ! -d $TEMPDIR/data/homegear-data || test ! -f $TEMPDIR/data/homegear-data/db.sql.bak0;then rm -Rf $TEMPDIR;exit 1;fi;mv /etc/homegear/ /etc/homegear.bak" + std::to_string(time) + " && mv /data/homegear-data /data/homegear-data.bak" + std::to_string(time) + " && cp -a $TEMPDIR/etc/homegear /etc/ && cp -a $TEMPDIR/data/homegear-data /data/;rm -Rf $TEMPDIR");
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "mount -o remount,rw /;chown root:root /var/lib/homegear/scripts/RestoreHomegear.sh;chmod 750 /var/lib/homegear/scripts/RestoreHomegear.sh;cp -a /var/lib/homegear/scripts/RestoreHomegear.sh /;/RestoreHomegear.sh \"" + parameters->at(0)->stringValue + "\";rm -f /RestoreHomegear.sh");
 
         return std::make_shared<Ipc::Variable>();
     }
@@ -613,7 +611,7 @@ Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
 
         {
             std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 1;
+            _commandStatus = 256;
             _commandOutput = "";
         }
 
@@ -652,7 +650,7 @@ Ipc::PVariable IpcClient::reboot(Ipc::PArray& parameters)
 
         {
             std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 1;
+            _commandStatus = 256;
             _commandOutput = "";
         }
 
@@ -850,7 +848,7 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
 
         {
             std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 1;
+            _commandStatus = 256;
             _commandOutput = "";
         }
 
