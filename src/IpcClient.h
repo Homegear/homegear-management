@@ -67,6 +67,16 @@ private:
     Ipc::PVariable setConfigurationEntry(Ipc::PArray& parameters);
     Ipc::PVariable writeCloudMaticConfig(Ipc::PArray& parameters);
     // }}}
+
+    // {{{ Backups
+    Ipc::PVariable createBackup(Ipc::PArray& parameters);
+    Ipc::PVariable restoreBackup(Ipc::PArray& parameters);
+    // }}}
+
+    // {{{ CA and gateways
+    Ipc::PVariable caExists(Ipc::PArray& parameters);
+    Ipc::PVariable createCa(Ipc::PArray& parameters);
+    // }}}
 };
 
 #endif

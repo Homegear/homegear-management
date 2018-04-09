@@ -46,6 +46,16 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("managementReboot", std::bind(&IpcClient::reboot, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementWriteCloudMaticConfig", std::bind(&IpcClient::writeCloudMaticConfig, this, std::placeholders::_1));
+
+    // {{{ Backups
+    _localRpcMethods.emplace("managementCreateBackup", std::bind(&IpcClient::createBackup, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementRestoreBackup", std::bind(&IpcClient::restoreBackup, this, std::placeholders::_1));
+    // }}}
+
+    // {{{ CA and gateways
+    _localRpcMethods.emplace("managementCaExists", std::bind(&IpcClient::caExists, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementCreateCa", std::bind(&IpcClient::createCa, this, std::placeholders::_1));
+    // }}}
 }
 
 IpcClient::~IpcClient()
@@ -242,6 +252,72 @@ void IpcClient::onConnect()
         }
         if (error) return;
 
+        //{{{ Backups
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementCreateBackup"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateBackup: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementRestoreBackup"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //1st parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementRestoreBackup: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+        //}}}
+
+        //{{{ CA and gateways
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementCaExists"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementCaExists: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementCreateCa"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateCa: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+        //}}}
+
         GD::out.printInfo("Info: RPC methods successfully registered.");
     }
     catch (const std::exception& ex)
@@ -264,8 +340,9 @@ void IpcClient::executeCommand(std::string command)
     try
     {
         std::string output;
-        _commandStatus = BaseLib::HelperFunctions::exec(command, output);
+        auto commandStatus = BaseLib::HelperFunctions::exec(command, output);
         std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
+        _commandStatus = commandStatus;
         _commandOutput = output;
     }
     catch (const std::exception& ex)
@@ -400,6 +477,79 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
 
         if(_commandThread.joinable()) _commandThread.join();
         _commandThread = std::thread(&IpcClient::executeCommand, this, "DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade");
+
+        return std::make_shared<Ipc::Variable>();
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    _commandStatus = -1;
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        {
+            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
+            _commandStatus = 1;
+            _commandOutput = "";
+        }
+
+        auto time = BaseLib::HelperFunctions::getTimeSeconds();
+        std::string file = "/tmp/" + std::to_string(time) + "_homegear-backup.tar.gz";
+
+        if(_commandThread.joinable()) _commandThread.join();
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "tar -zcpf " + file + " /etc/homegear /data/homegear-data");
+
+        return std::make_shared<Ipc::Variable>(file);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    _commandStatus = -1;
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::restoreBackup(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+        if(!BaseLib::Io::fileExists(parameters->at(0)->stringValue)) return Ipc::Variable::createError(-1, "Parameter 1 is not a valid file.");
+
+        {
+            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
+            _commandStatus = 1;
+            _commandOutput = "";
+        }
+
+        auto time = BaseLib::HelperFunctions::getTimeSeconds();
+
+        if(_commandThread.joinable()) _commandThread.join();
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "service homegear stop;TEMPDIR=`mktemp -d`;tar -zxf \"" + parameters->at(0)->stringValue + "\" -C $TEMPDIR;if test ! -d $TEMPDIR/etc/homegear || test ! -f $TEMPDIR/etc/homegear/main.conf || test ! -d $TEMPDIR/data/homegear-data || test ! -f $TEMPDIR/data/homegear-data/db.sql.bak0;then rm -Rf $TEMPDIR;exit 1;fi;mv /etc/homegear/ /etc/homegear.bak" + std::to_string(time) + " && mv /data/homegear-data /data/homegear-data.bak" + std::to_string(time) + " && cp -a $TEMPDIR/etc/homegear /etc/ && cp -a $TEMPDIR/data/homegear-data /data/;rm -Rf $TEMPDIR");
 
         return std::make_shared<Ipc::Variable>();
     }
@@ -662,4 +812,67 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
+
+// {{{ CA and gateways
+Ipc::PVariable IpcClient::caExists(Ipc::PArray& parameters)
+{
+    try
+    {
+        return std::make_shared<Ipc::Variable>(BaseLib::Io::directoryExists("/etc/homegear/ca") && BaseLib::Io::fileExists("/etc/homegear/ca/private/cakey.pem"));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(BaseLib::Io::directoryExists("/etc/homegear/ca") && BaseLib::Io::fileExists("/etc/homegear/ca/private/cakey.pem")) return std::make_shared<Ipc::Variable>(false);
+        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "Command is already being executed.");
+
+        std::string output;
+        BaseLib::HelperFunctions::exec("sed -i \"s/= \\.\\/demoCA/= \\/etc\\/homegear\\/ca/g\" /usr/lib/ssl/openssl.cnf", output);
+        BaseLib::HelperFunctions::exec("mkdir /etc/homegear/ca /etc/homegear/ca/newcerts /etc/homegear/ca/certs /etc/homegear/ca/crl /etc/homegear/ca/private /etc/homegear/ca/requests", output);
+        BaseLib::HelperFunctions::exec("touch /etc/homegear/ca/index.txt", output);
+        BaseLib::HelperFunctions::exec("echo \"1000\" > /etc/homegear/ca/serial", output);
+
+        {
+            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
+            _commandStatus = 1;
+            _commandOutput = "";
+        }
+
+        if(_commandThread.joinable()) _commandThread.join();
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 10958 -set_serial 0");
+
+        return std::make_shared<Ipc::Variable>(true);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
 // }}}
