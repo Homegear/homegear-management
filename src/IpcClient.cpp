@@ -685,19 +685,25 @@ Ipc::PVariable IpcClient::getConfigurationEntry(Ipc::PArray& parameters)
 
         auto& settingsWhitelist = GD::settings.settingsWhitelist();
 
-        auto fileIterator = settingsWhitelist.find(parameters->at(0)->stringValue);
-        if(fileIterator == settingsWhitelist.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this file.");
+        for(auto& entry : settingsWhitelist)
+        {
+            std::regex regex(entry.first);
+            if(std::regex_match(parameters->at(0)->stringValue, regex))
+            {
+                auto settingIterator = entry.second.find(parameters->at(1)->stringValue);
+                if(settingIterator == entry.second.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this setting.");
 
-        auto settingIterator = fileIterator->second.find(parameters->at(1)->stringValue);
-        if(settingIterator == fileIterator->second.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this setting.");
+                std::string output;
+                BaseLib::HelperFunctions::exec("cat /etc/homegear/" + parameters->at(0)->stringValue + " | grep \"^" + parameters->at(1)->stringValue + " \"", output);
 
-        std::string output;
-        BaseLib::HelperFunctions::exec("cat /etc/homegear/" + parameters->at(0)->stringValue + " | grep \"^" + parameters->at(1)->stringValue + " \"", output);
+                BaseLib::HelperFunctions::trim(output);
+                auto settingPair = BaseLib::HelperFunctions::splitFirst(output, '=');
+                BaseLib::HelperFunctions::trim(settingPair.second);
+                return std::make_shared<Ipc::Variable>(settingPair.second);
+            }
+        }
 
-        BaseLib::HelperFunctions::trim(output);
-        auto settingPair = BaseLib::HelperFunctions::splitFirst(output, '=');
-        BaseLib::HelperFunctions::trim(settingPair.second);
-        return std::make_shared<Ipc::Variable>(settingPair.second);
+        return Ipc::Variable::createError(-2, "You are not allowed to read this file.");
     }
     catch (const std::exception& ex)
     {
@@ -725,16 +731,22 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
 
         auto& settingsWhitelist = GD::settings.settingsWhitelist();
 
-        auto fileIterator = settingsWhitelist.find(parameters->at(0)->stringValue);
-        if(fileIterator == settingsWhitelist.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this file.");
+        for(auto& entry : settingsWhitelist)
+        {
+            std::regex regex(entry.first);
+            if(std::regex_match(parameters->at(0)->stringValue, regex))
+            {
+                auto settingIterator = entry.second.find(parameters->at(1)->stringValue);
+                if(settingIterator == entry.second.end()) return Ipc::Variable::createError(-2, "You are not allowed to write this setting.");
 
-        auto settingIterator = fileIterator->second.find(parameters->at(1)->stringValue);
-        if(settingIterator == fileIterator->second.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this setting.");
+                std::string output;
+                BaseLib::HelperFunctions::exec("sed -i \"s/^" + parameters->at(1)->stringValue + " .*/" + parameters->at(1)->stringValue + " = " + parameters->at(2)->stringValue + "/g\" /etc/homegear/" + parameters->at(0)->stringValue, output);
 
-        std::string output;
-        BaseLib::HelperFunctions::exec("sed -i \"s/^" + parameters->at(1)->stringValue + " .*/" + parameters->at(1)->stringValue + " = " + parameters->at(2)->stringValue + "/g\" /etc/homegear/" + parameters->at(0)->stringValue, output);
+                return std::make_shared<Ipc::Variable>();
+            }
+        }
 
-        return std::make_shared<Ipc::Variable>();
+        return Ipc::Variable::createError(-2, "You are not allowed to write to this file.");
     }
     catch (const std::exception& ex)
     {
