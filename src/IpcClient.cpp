@@ -366,6 +366,7 @@ void IpcClient::executeCommand(std::string command)
         std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
         _commandStatus = commandStatus;
         _commandOutput = output;
+        GD::out.printInfo("Info: Output of command " + command + ":\n" + output);
     }
     catch (const std::exception& ex)
     {
