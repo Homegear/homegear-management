@@ -633,28 +633,28 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
 
         std::string filename = "/etc/openvpn/cloudmatic.conf";
         BaseLib::Io::writeFile(filename, parameters->at(0)->stringValue);
-        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
-        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << filename << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << filename << std::endl;
 
         filename = "/etc/openvpn/mhcfg";
         BaseLib::Io::writeFile(filename, parameters->at(1)->stringValue);
-        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
-        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << filename << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << filename << std::endl;
 
         filename = "/etc/openvpn/cloudmatic/mhca.crt";
         BaseLib::Io::writeFile(filename, parameters->at(2)->stringValue);
-        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
-        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << filename << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << filename << std::endl;
 
         filename = "/etc/openvpn/cloudmatic/client.crt";
         BaseLib::Io::writeFile(filename, parameters->at(3)->stringValue);
-        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
-        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << filename << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR | S_IRGRP) == -1) std::cerr << "Could not set permissions on " << filename << std::endl;
 
         filename = "/etc/openvpn/cloudmatic/client.key";
         BaseLib::Io::writeFile(filename, parameters->at(4)->stringValue);
-        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
-        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR) == -1) std::cerr << "Could not set permissions on " << cloudMaticCertPath << std::endl;
+        if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << filename << std::endl;
+        if(chmod(filename.c_str(), S_IRUSR | S_IWUSR) == -1) std::cerr << "Could not set permissions on " << filename << std::endl;
 
         return std::make_shared<Ipc::Variable>();
     }
