@@ -56,9 +56,6 @@ private:
     void executeCommand(std::string command);
 
     // {{{ RPC methods
-    Ipc::PVariable aptUpdate(Ipc::PArray& parameters);
-    Ipc::PVariable aptUpgrade(Ipc::PArray& parameters);
-    Ipc::PVariable aptFullUpgrade(Ipc::PArray& parameters);
     Ipc::PVariable dpkgPackageInstalled(Ipc::PArray& parameters);
     Ipc::PVariable getCommandStatus(Ipc::PArray& parameters);
     Ipc::PVariable getConfigurationEntry(Ipc::PArray& parameters);
@@ -66,6 +63,14 @@ private:
     Ipc::PVariable serviceCommand(Ipc::PArray& parameters);
     Ipc::PVariable setConfigurationEntry(Ipc::PArray& parameters);
     Ipc::PVariable writeCloudMaticConfig(Ipc::PArray& parameters);
+    // }}}
+
+    // {{{ Updates
+    Ipc::PVariable aptUpdate(Ipc::PArray& parameters);
+    Ipc::PVariable aptUpgrade(Ipc::PArray& parameters);
+    Ipc::PVariable aptFullUpgrade(Ipc::PArray& parameters);
+    Ipc::PVariable homegearUpdateAvailable(Ipc::PArray& parameters);
+    Ipc::PVariable systemUpdateAvailable(Ipc::PArray& parameters);
     // }}}
 
     // {{{ Backups
