@@ -372,9 +372,8 @@ Ipc::PVariable IpcClient::getCommandStatus(Ipc::PArray& parameters)
 
         auto result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
         result->arrayValue->reserve(2);
-        result->arrayValue->push_back(std::make_shared<Ipc::Variable>(_commandStatus));
-
         std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
+        result->arrayValue->push_back(std::make_shared<Ipc::Variable>(_commandStatus));
         result->arrayValue->push_back(std::make_shared<Ipc::Variable>(_commandOutput));
 
         return result;
