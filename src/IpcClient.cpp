@@ -61,6 +61,10 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("managementCaExists", std::bind(&IpcClient::caExists, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementCreateCa", std::bind(&IpcClient::createCa, this, std::placeholders::_1));
     // }}}
+
+    // {{{ Device description files
+    _localRpcMethods.emplace("managementCopyDeviceDescriptionFile", std::bind(&IpcClient::copyDeviceDescriptionFile, this, std::placeholders::_1));
+    // }}}
 }
 
 IpcClient::~IpcClient()
@@ -339,6 +343,26 @@ void IpcClient::onConnect()
         }
         if (error) return;
         //}}}
+
+        // {{{ Device description files
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementCopyDeviceDescriptionFile"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(3);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //1st parameter
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //2nd parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementCopyDeviceDescriptionFile: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+        // }}}
 
         GD::out.printInfo("Info: RPC methods successfully registered.");
     }
@@ -982,6 +1006,35 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
         _commandThread = std::thread(&IpcClient::executeCommand, this, "openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 10958 -set_serial 0");
 
         return std::make_shared<Ipc::Variable>(true);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
+// {{{ Device description files
+Ipc::PVariable IpcClient::copyDeviceDescriptionFile(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 2) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+        if(parameters->at(1)->type != Ipc::VariableType::tInteger && parameters->at(1)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter 2 is not of type Integer.");
+
+        BaseLib::HelperFunctions::stripNonPrintable(parameters->at(0)->stringValue);
+
+        return std::make_shared<Ipc::Variable>(GD::bl->io.copyFile(parameters->at(0)->stringValue, "/etc/homegear/devices/" + std::to_string(parameters->at(1)->integerValue) + "/"+ BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/').second));
     }
     catch (const std::exception& ex)
     {
