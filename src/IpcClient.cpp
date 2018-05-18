@@ -60,6 +60,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     // {{{ CA and gateways
     _localRpcMethods.emplace("managementCaExists", std::bind(&IpcClient::caExists, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementCreateCa", std::bind(&IpcClient::createCa, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementCreateCert", std::bind(&IpcClient::createCert, this, std::placeholders::_1));
     // }}}
 
     // {{{ Device description files
@@ -340,6 +341,23 @@ void IpcClient::onConnect()
         {
             error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateCa: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementCreateCert"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //1st parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateCert: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
         //}}}
@@ -1005,6 +1023,63 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
         _commandThread = std::thread(&IpcClient::executeCommand, this, "openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && chmod 400 /etc/homegear/ca/private/cakey.pem && chown root:root /etc/homegear/ca/private/cakey.pem && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 100000 -set_serial 0 -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=Homegear CA\"");
 
         return std::make_shared<Ipc::Variable>(true);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter is not of type String.");
+
+        if(!BaseLib::Io::directoryExists("/etc/homegear/ca") || !BaseLib::Io::fileExists("/etc/homegear/ca/private/cakey.pem")) return Ipc::Variable::createError(-2, "No CA found.");
+        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
+
+        std::string commonName;
+        commonName.reserve(parameters->at(0)->stringValue.size());
+        for(std::string::const_iterator i = parameters->at(0)->stringValue.begin(); i != parameters->at(0)->stringValue.end(); ++i)
+        {
+            if(isalpha(*i) || isdigit(*i) || (*i == '_') || (*i == '-') || (*i == ' ')) commonName.push_back(*i);
+        }
+
+        std::string filename = BaseLib::HelperFunctions::stripNonAlphaNumeric(commonName);
+
+        std::string output;
+        BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", output);
+        BaseLib::HelperFunctions::trim(output);
+        if(output != "0") return Ipc::Variable::createError(-3, "A certificate with this common name already exists.");
+
+        {
+            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
+            _commandStatus = 256;
+            _commandOutput = "";
+        }
+
+        if(_commandThread.joinable()) _commandThread.join();
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr");
+
+        auto result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+        result->structValue->emplace("filenamePrefix", std::make_shared<Ipc::Variable>(filename));
+        result->structValue->emplace("commonNameUsed", std::make_shared<Ipc::Variable>(commonName));
+        result->structValue->emplace("caPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/cacert.pem"));
+        result->structValue->emplace("certPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/certs/" + filename + ".crt"));
+        result->structValue->emplace("keyPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/private/" + filename + ".key"));
+
+        return result;
     }
     catch (const std::exception& ex)
     {
