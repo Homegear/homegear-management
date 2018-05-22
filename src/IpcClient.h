@@ -81,6 +81,11 @@ private:
     // {{{ CA and gateways
     Ipc::PVariable caExists(Ipc::PArray& parameters);
     Ipc::PVariable createCa(Ipc::PArray& parameters);
+    Ipc::PVariable createCert(Ipc::PArray& parameters);
+    // }}}
+
+    // {{{ Device description files
+    Ipc::PVariable copyDeviceDescriptionFile(Ipc::PArray& parameters);
     // }}}
 };
 
