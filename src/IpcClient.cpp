@@ -1026,7 +1026,7 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
         if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
 
         std::string output;
-        BaseLib::HelperFunctions::exec("sed -i \"s/= \\.\\/demoCA/= \\/etc\\/homegear\\/ca/g\" /usr/lib/ssl/openssl.cnf", output);
+        BaseLib::HelperFunctions::exec("sed -i \"/^dir[ \\t]/c\\dir = \\/etc\\/homegear\\/ca\" /usr/lib/ssl/openssl.cnf", output);
         BaseLib::HelperFunctions::exec("mkdir /etc/homegear/ca /etc/homegear/ca/newcerts /etc/homegear/ca/certs /etc/homegear/ca/crl /etc/homegear/ca/private /etc/homegear/ca/requests", output);
         BaseLib::HelperFunctions::exec("touch /etc/homegear/ca/index.txt", output);
         BaseLib::HelperFunctions::exec("echo \"1000\" > /etc/homegear/ca/serial", output);
