@@ -1133,16 +1133,19 @@ Ipc::PVariable IpcClient::deleteCert(Ipc::PArray& parameters)
         std::string filename = BaseLib::HelperFunctions::stripNonAlphaNumeric(commonName);
 
         std::string output;
-        BaseLib::HelperFunctions::exec("sed -i \"/.*CN=" + commonName + "$/d\" /etc/homegear/ca/index.txt", output);
-        std::string output2 = output;
-        BaseLib::HelperFunctions::exec("rm -f /etc/homegear/ca/certs/" + filename + ".crt", output);
-        output2 += "\n" + output;
-        BaseLib::HelperFunctions::exec("rm -f /etc/homegear/ca/private/" + filename + ".key", output);
-        output2 += "\n" + output;
+        BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", output);
+        BaseLib::HelperFunctions::trim(output);
+        bool fileExists = output != "0" || BaseLib::Io::fileExists("/etc/homegear/ca/certs/" + filename + ".crt") || BaseLib::Io::fileExists("/etc/homegear/ca/private/" + filename + ".key");
+        if(!fileExists) return std::make_shared<Ipc::Variable>(1);
 
-        BaseLib::HelperFunctions::trim(output2);
+        BaseLib::HelperFunctions::exec("sed -i \"/.*CN=" + commonName + "$/d\" /etc/homegear/ca/index.txt; rm -f /etc/homegear/ca/certs/" + filename + ".crt; rm -f /etc/homegear/ca/private/" + filename + ".key; sync", output);
 
-        return std::make_shared<Ipc::Variable>(output2);
+        output.clear();
+        BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", output);
+        BaseLib::HelperFunctions::trim(output);
+        fileExists = output != "0" || BaseLib::Io::fileExists("/etc/homegear/ca/certs/" + filename + ".crt") || BaseLib::Io::fileExists("/etc/homegear/ca/private/" + filename + ".key");
+        if(!fileExists) return std::make_shared<Ipc::Variable>(0);
+        else return std::make_shared<Ipc::Variable>(-1);
     }
     catch (const std::exception& ex)
     {
