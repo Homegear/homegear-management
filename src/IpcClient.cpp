@@ -1038,7 +1038,7 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
         }
 
         if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && chmod 400 /etc/homegear/ca/private/cakey.pem && chown root:root /etc/homegear/ca/private/cakey.pem && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 100000 -set_serial 0 -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=Homegear CA\"");
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "cd /etc/homegear/ca && openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && chmod 400 /etc/homegear/ca/private/cakey.pem && chown root:root /etc/homegear/ca/private/cakey.pem && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 100000 -set_serial 0 -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=Homegear CA\"");
 
         return std::make_shared<Ipc::Variable>(true);
     }
