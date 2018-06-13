@@ -640,6 +640,9 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
 
         auto& settingsWhitelist = GD::settings.settingsWhitelist();
 
+        BaseLib::HelperFunctions::stringReplace(parameters->at(1)->stringValue, "/", "\\/");
+        BaseLib::HelperFunctions::stringReplace(parameters->at(2)->stringValue, "/", "\\/");
+
         for(auto& entry : settingsWhitelist)
         {
             std::regex regex(entry.first);
