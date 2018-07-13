@@ -347,9 +347,12 @@ void startUp()
             currentPath = GD::pidfilePath.substr(0, GD::pidfilePath.find_last_of('/'));
             if(!currentPath.empty())
             {
-                if(!BaseLib::Io::directoryExists(currentPath)) BaseLib::Io::createDirectory(currentPath, S_IRWXU | S_IRWXG);
-                if(chown(currentPath.c_str(), userId, groupId) == -1) std::cerr << "Could not set owner on " << currentPath << std::endl;
-                if(chmod(currentPath.c_str(), S_IRWXU | S_IRWXG) == -1) std::cerr << "Could not set permissions on " << currentPath << std::endl;
+                if(!BaseLib::Io::directoryExists(currentPath))
+                {
+                    BaseLib::Io::createDirectory(currentPath, S_IRWXU | S_IRWXG);
+                    if(chown(currentPath.c_str(), userId, groupId) == -1) std::cerr << "Could not set owner on " << currentPath << std::endl;
+                    if(chmod(currentPath.c_str(), S_IRWXU | S_IRWXG) == -1) std::cerr << "Could not set permissions on " << currentPath << std::endl;
+                }
             }
         }
 
