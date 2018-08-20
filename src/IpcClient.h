@@ -65,6 +65,10 @@ private:
     Ipc::PVariable writeCloudMaticConfig(Ipc::PArray& parameters);
     // }}}
 
+    // {{{ User management
+    Ipc::PVariable setUserPassword(Ipc::PArray& parameters);
+    // }}}
+
     // {{{ Updates
     Ipc::PVariable aptUpdate(Ipc::PArray& parameters);
     Ipc::PVariable aptUpgrade(Ipc::PArray& parameters);

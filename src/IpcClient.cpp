@@ -44,6 +44,10 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("managementServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementWriteCloudMaticConfig", std::bind(&IpcClient::writeCloudMaticConfig, this, std::placeholders::_1));
 
+    // {{{ User management
+    _localRpcMethods.emplace("managementSetUserPassword", std::bind(&IpcClient::setUserPassword, this, std::placeholders::_1));
+    // }}}
+
     // {{{ Updates
     _localRpcMethods.emplace("managementAptUpdate", std::bind(&IpcClient::aptUpdate, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptUpgrade", std::bind(&IpcClient::aptUpgrade, this, std::placeholders::_1));
@@ -202,6 +206,26 @@ void IpcClient::onConnect()
             Ipc::Output::printCritical("Critical: Could not register RPC method managementWriteCloudMaticConfig: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
+
+        //{{{ User management
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementSetUserPassword"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(3);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementSetUserPassword: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+        //}}}
 
         //{{{ Updates
         parameters = std::make_shared<Ipc::Array>();
@@ -733,6 +757,43 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
+
+// {{{ User management
+Ipc::PVariable IpcClient::setUserPassword(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 2) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+        if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type String.");
+
+        BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+        BaseLib::HelperFunctions::stringReplace(parameters->at(1)->stringValue, "'", "'\\''");
+
+        std::string output;
+        BaseLib::HelperFunctions::exec("id -u " + parameters->at(0)->stringValue, output);
+        int32_t userId = BaseLib::Math::getNumber(output);
+        if(userId < 1000) return Ipc::Variable::createError(-2, "User has a UID less than 1000 or UID could not be determined.");
+
+        BaseLib::HelperFunctions::exec("echo '" + parameters->at(0)->stringValue + ":" + parameters->at(1)->stringValue + "' | chpasswd ", output);
+
+        return std::make_shared<Ipc::Variable>();
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
 
 // {{{ Updates
 Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
