@@ -36,6 +36,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
     _commandThreadRunning = false;
 
+    _localRpcMethods.emplace("managementSleep", std::bind(&IpcClient::sleep, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementDpkgPackageInstalled", std::bind(&IpcClient::dpkgPackageInstalled, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementGetCommandStatus", std::bind(&IpcClient::getCommandStatus, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementGetConfigurationEntry", std::bind(&IpcClient::getConfigurationEntry, this, std::placeholders::_1));
@@ -96,6 +97,23 @@ void IpcClient::onConnect()
         {
             error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetCommandStatus: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementSleep"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //1st parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementDpkgPackageInstalled: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -484,6 +502,41 @@ Ipc::PVariable IpcClient::getCommandStatus(Ipc::PArray& parameters)
         result->arrayValue->push_back(std::make_shared<Ipc::Variable>(_commandOutput));
 
         return result;
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::sleep(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tInteger && parameters->at(0)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter 1 is not of type Integer.");
+
+        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
+
+        {
+            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
+            _commandStatus = 256;
+            _commandOutput = "";
+        }
+
+        if(_commandThread.joinable()) _commandThread.join();
+        _commandThread = std::thread(&IpcClient::executeCommand, this, "sleep " + std::to_string(parameters->at(0)->integerValue));
+
+        return std::make_shared<Ipc::Variable>();
     }
     catch (const std::exception& ex)
     {

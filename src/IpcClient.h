@@ -58,6 +58,7 @@ private:
     // {{{ RPC methods
     Ipc::PVariable dpkgPackageInstalled(Ipc::PArray& parameters);
     Ipc::PVariable getCommandStatus(Ipc::PArray& parameters);
+    Ipc::PVariable sleep(Ipc::PArray& parameters);
     Ipc::PVariable getConfigurationEntry(Ipc::PArray& parameters);
     Ipc::PVariable reboot(Ipc::PArray& parameters);
     Ipc::PVariable serviceCommand(Ipc::PArray& parameters);
