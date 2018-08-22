@@ -728,7 +728,13 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
                 if(settingIterator == entry.second.end()) return Ipc::Variable::createError(-2, "You are not allowed to write this setting.");
 
                 std::string output;
+                BaseLib::HelperFunctions::exec("grep '/dev/root' /proc/mounts | grep -c '\sro[\s,]'", output);
+                bool readOnly = BaseLib::Math::getNumber(output) == 1;
+                if(readOnly) BaseLib::HelperFunctions::exec("mount -o remount,rw /", output);
+
                 BaseLib::HelperFunctions::exec("sed -i \"s/^" + parameters->at(1)->stringValue + " .*/" + parameters->at(1)->stringValue + " = " + parameters->at(2)->stringValue + "/g\" /etc/homegear/" + parameters->at(0)->stringValue, output);
+
+                if(readOnly) BaseLib::HelperFunctions::exec("sync; mount -o remount,ro /", output);
 
                 return std::make_shared<Ipc::Variable>();
             }
