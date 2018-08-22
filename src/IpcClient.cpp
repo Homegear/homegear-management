@@ -1101,8 +1101,20 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-        auto time = BaseLib::HelperFunctions::getTimeSeconds();
-        std::string file = "/tmp/" + std::to_string(time) + "_homegear-backup.tar.gz";
+        auto time = BaseLib::HelperFunctions::getTime();
+        std::string file;
+        if(BaseLib::Io::directoryExists("/data/homegear-data/"))
+        {
+            if(!BaseLib::Io::directoryExists("/data/homegear-data/backups"))
+            {
+                BaseLib::Io::createDirectory("/data/homegear-data/backups", S_IRWXU | S_IRWXG);
+                std::string output;
+                BaseLib::HelperFunctions::exec("chown homegear:homegear /data/homegear-data/backups", output);
+            }
+
+            file = "/data/homegear-data/backups/" + std::to_string(time) + "_homegear-backup.tar.gz";
+        }
+        else file = "/tmp/" + std::to_string(time) + "_homegear-backup.tar.gz";
 
         auto metadata = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
         metadata->structValue->emplace("filename", std::make_shared<Ipc::Variable>(file));
