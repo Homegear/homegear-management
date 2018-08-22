@@ -47,13 +47,33 @@ public:
 private:
     virtual void onConnect();
 
-    std::atomic_bool _commandThreadRunning;
-    std::thread _commandThread;
-    std::mutex _commandOutputMutex;
-    std::atomic_int _commandStatus;
-    std::string _commandOutput;
+    class CommandInfo
+    {
+    public:
+        int64_t endTime = 0;
+        std::string command;
+        std::atomic_bool running;
+        std::thread thread;
+        std::mutex outputMutex;
+        std::string output;
+        std::atomic_int status;
+        Ipc::PVariable metadata;
 
-    void executeCommand(std::string command);
+        CommandInfo()
+        {
+            running = false;
+            status = -1;
+        }
+    };
+    typedef std::shared_ptr<CommandInfo> PCommandInfo;
+
+    std::atomic_bool _disposing;
+    std::mutex _commandInfoMutex;
+    int32_t _currentCommandInfoId = 0;
+    std::unordered_map<int32_t, PCommandInfo> _commandInfo;
+
+    int32_t startCommandThread(std::string command, Ipc::PVariable metadata = std::make_shared<Ipc::Variable>());
+    void executeCommand(PCommandInfo commandInfo);
 
     // {{{ RPC methods
     Ipc::PVariable dpkgPackageInstalled(Ipc::PArray& parameters);

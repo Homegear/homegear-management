@@ -34,7 +34,7 @@
 
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
-    _commandThreadRunning = false;
+    _disposing = false;
 
     _localRpcMethods.emplace("managementSleep", std::bind(&IpcClient::sleep, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementDpkgPackageInstalled", std::bind(&IpcClient::dpkgPackageInstalled, this, std::placeholders::_1));
@@ -76,7 +76,20 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 
 IpcClient::~IpcClient()
 {
-    if(_commandThread.joinable()) _commandThread.join();
+    _disposing = true;
+
+    std::unordered_map<int32_t, PCommandInfo> commandInfoCopy;
+
+    {
+        std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
+        commandInfoCopy = _commandInfo;
+        _commandInfo.clear();
+    }
+
+    for(auto& commandInfo : commandInfoCopy)
+    {
+        if(commandInfo.second->thread.joinable()) commandInfo.second->thread.join();
+    }
 }
 
 void IpcClient::onConnect()
@@ -458,34 +471,92 @@ void IpcClient::onConnect()
     }
 }
 
-void IpcClient::executeCommand(std::string command)
+int32_t IpcClient::startCommandThread(std::string command, Ipc::PVariable metadata)
 {
-    _commandThreadRunning = true;
     try
     {
-        std::string output;
-        auto commandStatus = BaseLib::HelperFunctions::exec(command, output);
-        std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-        _commandStatus = commandStatus;
-        _commandOutput = output;
-        GD::out.printInfo("Info: Output of command " + command + ":\n" + output);
+        std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
+
+        if(_disposing) return -1;
+
+        int32_t runningCommands = 0;
+
+        std::list<int32_t> idsToErase;
+        for(auto& commandInfo : _commandInfo)
+        {
+            if(!commandInfo.second->running)
+            {
+                if(Ipc::HelperFunctions::getTime() - commandInfo.second->endTime > 60000)
+                {
+                    if(commandInfo.second->thread.joinable()) commandInfo.second->thread.join();
+                    idsToErase.push_back(commandInfo.first);
+                }
+            }
+            else runningCommands++;
+        }
+
+        if(runningCommands >= GD::settings.maxCommandThreads()) return -2;
+
+        for(auto idToErase : idsToErase)
+        {
+            _commandInfo.erase(idToErase);
+        }
+
+        int32_t currentId = -1;
+        while(currentId == -1 || currentId == -2) currentId = _currentCommandInfoId++;
+
+        auto commandInfo = std::make_shared<CommandInfo>();
+        commandInfo->running = true;
+        commandInfo->command = std::move(command);
+        commandInfo->metadata = metadata;
+        _commandInfo.emplace(currentId, commandInfo);
+        commandInfo->thread = std::thread(&IpcClient::executeCommand, this, commandInfo);
+
+        return currentId;
     }
     catch (const std::exception& ex)
     {
-        _commandStatus = -1;
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
     catch (Ipc::IpcException& ex)
     {
-        _commandStatus = -1;
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
     catch (...)
     {
-        _commandStatus = -1;
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    _commandThreadRunning = false;
+    return -1;
+}
+
+void IpcClient::executeCommand(PCommandInfo commandInfo)
+{
+    try
+    {
+        std::string output;
+        auto commandStatus = BaseLib::HelperFunctions::exec(commandInfo->command, output);
+        std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
+        commandInfo->status = commandStatus;
+        commandInfo->output = std::move(output);
+        commandInfo->endTime = BaseLib::HelperFunctions::getTime();
+        GD::out.printInfo("Info: Output of command " + commandInfo->command + ":\n" + commandInfo->output);
+    }
+    catch (const std::exception& ex)
+    {
+        commandInfo->status = -1;
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        commandInfo->status = -1;
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        commandInfo->status = -1;
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    commandInfo->running = false;
 }
 
 // {{{ RPC methods
@@ -493,15 +564,62 @@ Ipc::PVariable IpcClient::getCommandStatus(Ipc::PArray& parameters)
 {
     try
     {
-        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(!parameters->empty() && parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->size() == 1 && parameters->at(0)->type != Ipc::VariableType::tInteger && parameters->at(0)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter is not of type Integer.");
 
-        auto result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
-        result->arrayValue->reserve(2);
-        std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-        result->arrayValue->push_back(std::make_shared<Ipc::Variable>(_commandStatus));
-        result->arrayValue->push_back(std::make_shared<Ipc::Variable>(_commandOutput));
+        if(parameters->empty())
+        {
+            std::unordered_map<int32_t, PCommandInfo> commandInfoCopy;
 
-        return result;
+            {
+                std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
+                commandInfoCopy = _commandInfo;
+            }
+
+            auto result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
+            result->arrayValue->reserve(commandInfoCopy.size());
+            for(auto& commandInfo : commandInfoCopy)
+            {
+                auto element = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+
+                std::lock_guard<std::mutex> outputGuard(commandInfo.second->outputMutex);
+                element->structValue->emplace("finished", std::make_shared<Ipc::Variable>(!commandInfo.second->running));
+                element->structValue->emplace("metadata", commandInfo.second->metadata);
+                if(!commandInfo.second->running)
+                {
+                    element->structValue->emplace("endTime", std::make_shared<Ipc::Variable>(commandInfo.second->endTime));
+                    element->structValue->emplace("exitCode", std::make_shared<Ipc::Variable>(commandInfo.second->status));
+                    element->structValue->emplace("output", std::make_shared<Ipc::Variable>(commandInfo.second->output));
+                }
+
+                result->arrayValue->emplace_back(element);
+            }
+            return result;
+        }
+        else
+        {
+            int32_t commandId = parameters->at(0)->integerValue;
+
+            PCommandInfo commandInfo;
+            {
+                std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
+                auto commandIterator = _commandInfo.find(commandId);
+                if(commandIterator == _commandInfo.end()) return Ipc::Variable::createError(-2, "Unknown command ID.");
+                commandInfo = commandIterator->second;
+            }
+
+            auto result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+            std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
+            result->structValue->emplace("finished", std::make_shared<Ipc::Variable>(!commandInfo->running));
+            result->structValue->emplace("metadata", commandInfo->metadata);
+            if(!commandInfo->running)
+            {
+                result->structValue->emplace("endTime", std::make_shared<Ipc::Variable>(commandInfo->endTime));
+                result->structValue->emplace("exitCode", std::make_shared<Ipc::Variable>(commandInfo->status));
+                result->structValue->emplace("output", std::make_shared<Ipc::Variable>(commandInfo->output));
+            }
+            return result;
+        }
     }
     catch (const std::exception& ex)
     {
@@ -525,18 +643,7 @@ Ipc::PVariable IpcClient::sleep(Ipc::PArray& parameters)
         if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
         if(parameters->at(0)->type != Ipc::VariableType::tInteger && parameters->at(0)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter 1 is not of type Integer.");
 
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
-
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
-
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "sleep " + std::to_string(parameters->at(0)->integerValue));
-
-        return std::make_shared<Ipc::Variable>();
+        return std::make_shared<Ipc::Variable>(startCommandThread("sleep " + std::to_string(parameters->at(0)->integerValue)));
     }
     catch (const std::exception& ex)
     {
@@ -563,9 +670,9 @@ Ipc::PVariable IpcClient::dpkgPackageInstalled(Ipc::PArray& parameters)
         auto package = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
 
         std::string output;
-        _commandStatus = BaseLib::HelperFunctions::exec("dpkg-query -W -f '${db:Status-Abbrev}|${binary:Package}\\n' '*' 2>/dev/null | grep '^ii' | awk -F '|' '{print $2}' | cut -d ':' -f 1 | grep ^" + package + "$", output);
+        auto commandStatus = BaseLib::HelperFunctions::exec("dpkg-query -W -f '${db:Status-Abbrev}|${binary:Package}\\n' '*' 2>/dev/null | grep '^ii' | awk -F '|' '{print $2}' | cut -d ':' -f 1 | grep ^" + package + "$", output);
 
-        if(_commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+        if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
 
         BaseLib::HelperFunctions::trim(output);
 
@@ -593,13 +700,6 @@ Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
         if(parameters->size() != 2) return Ipc::Variable::createError(-1, "Wrong parameter count.");
         if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
         if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type String.");
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
-
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
 
         auto controllableServices = GD::settings.controllableServices();
         if(controllableServices.find(parameters->at(0)->stringValue) == controllableServices.end()) return Ipc::Variable::createError(-2, "This service is not in the list of allowed services.");
@@ -607,10 +707,7 @@ Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
         auto allowedServiceCommands = GD::settings.allowedServiceCommands();
         if(allowedServiceCommands.find(parameters->at(1)->stringValue) == allowedServiceCommands.end()) return Ipc::Variable::createError(-2, "This command is not in the list of allowed service commands.");
 
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "systemctl " + parameters->at(1)->stringValue + " " + parameters->at(0)->stringValue);
-
-        return std::make_shared<Ipc::Variable>();
+        return std::make_shared<Ipc::Variable>(startCommandThread("systemctl " + parameters->at(1)->stringValue + " " + parameters->at(0)->stringValue));
     }
     catch (const std::exception& ex)
     {
@@ -624,7 +721,6 @@ Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    _commandStatus = -1;
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -634,16 +730,7 @@ Ipc::PVariable IpcClient::reboot(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
-
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "reboot");
-
-        return std::make_shared<Ipc::Variable>();
+        return std::make_shared<Ipc::Variable>(startCommandThread("reboot"));
     }
     catch (const std::exception& ex)
     {
@@ -657,7 +744,6 @@ Ipc::PVariable IpcClient::reboot(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    _commandStatus = -1;
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -728,7 +814,7 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
                 if(settingIterator == entry.second.end()) return Ipc::Variable::createError(-2, "You are not allowed to write this setting.");
 
                 std::string output;
-                BaseLib::HelperFunctions::exec("grep '/dev/root' /proc/mounts | grep -c '\sro[\s,]'", output);
+                BaseLib::HelperFunctions::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", output);
                 bool readOnly = BaseLib::Math::getNumber(output) == 1;
                 if(readOnly) BaseLib::HelperFunctions::exec("mount -o remount,rw /", output);
 
@@ -861,18 +947,7 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
-
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
-
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "apt update");
-
-        return std::make_shared<Ipc::Variable>();
+        return std::make_shared<Ipc::Variable>(startCommandThread("apt update"));
     }
     catch (const std::exception& ex)
     {
@@ -886,7 +961,6 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    _commandStatus = -1;
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -918,18 +992,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             packages << linePair.first << ' ';
         }
 
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
-
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
-
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y install --only-upgrade " + packages.str());
-
-        return std::make_shared<Ipc::Variable>();
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y install --only-upgrade " + packages.str()));
     }
     catch (const std::exception& ex)
     {
@@ -943,7 +1006,6 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    _commandStatus = -1;
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -952,18 +1014,8 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
     try
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
 
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
-
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade");
-
-        return std::make_shared<Ipc::Variable>();
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade"));
     }
     catch (const std::exception& ex)
     {
@@ -977,7 +1029,6 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    _commandStatus = -1;
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1049,21 +1100,14 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
     try
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
-
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
 
         auto time = BaseLib::HelperFunctions::getTimeSeconds();
         std::string file = "/tmp/" + std::to_string(time) + "_homegear-backup.tar.gz";
 
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "/var/lib/homegear/scripts/BackupHomegear.sh " + file);
+        auto metadata = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+        metadata->structValue->emplace("filename", std::make_shared<Ipc::Variable>(file));
 
-        return std::make_shared<Ipc::Variable>(file);
+        return std::make_shared<Ipc::Variable>(startCommandThread("/var/lib/homegear/scripts/BackupHomegear.sh " + file, metadata));
     }
     catch (const std::exception& ex)
     {
@@ -1077,7 +1121,6 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    _commandStatus = -1;
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1088,18 +1131,8 @@ Ipc::PVariable IpcClient::restoreBackup(Ipc::PArray& parameters)
         if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
         if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
         if(!BaseLib::Io::fileExists(parameters->at(0)->stringValue)) return Ipc::Variable::createError(-1, "Parameter 1 is not a valid file.");
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
 
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
-
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "mount -o remount,rw /;chown root:root /var/lib/homegear/scripts/RestoreHomegear.sh;chmod 750 /var/lib/homegear/scripts/RestoreHomegear.sh;cp -a /var/lib/homegear/scripts/RestoreHomegear.sh /;/RestoreHomegear.sh \"" + parameters->at(0)->stringValue + "\";rm -f /RestoreHomegear.sh");
-
-        return std::make_shared<Ipc::Variable>();
+        return std::make_shared<Ipc::Variable>(startCommandThread("mount -o remount,rw /;chown root:root /var/lib/homegear/scripts/RestoreHomegear.sh;chmod 750 /var/lib/homegear/scripts/RestoreHomegear.sh;cp -a /var/lib/homegear/scripts/RestoreHomegear.sh /;/RestoreHomegear.sh \"" + parameters->at(0)->stringValue + "\";rm -f /RestoreHomegear.sh"));
     }
     catch (const std::exception& ex)
     {
@@ -1113,7 +1146,6 @@ Ipc::PVariable IpcClient::restoreBackup(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
-    _commandStatus = -1;
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 // }}}
@@ -1145,7 +1177,6 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
     try
     {
         if(BaseLib::Io::directoryExists("/etc/homegear/ca") && BaseLib::Io::fileExists("/etc/homegear/ca/private/cakey.pem")) return std::make_shared<Ipc::Variable>(false);
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
 
         std::string output;
         BaseLib::HelperFunctions::exec("sed -i \"/^dir[ \\t]/c\\dir = \\/etc\\/homegear\\/ca\" /usr/lib/ssl/openssl.cnf", output);
@@ -1153,16 +1184,7 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
         BaseLib::HelperFunctions::exec("touch /etc/homegear/ca/index.txt", output);
         BaseLib::HelperFunctions::exec("echo \"1000\" > /etc/homegear/ca/serial", output);
 
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
-
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "cd /etc/homegear/ca && openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && chmod 400 /etc/homegear/ca/private/cakey.pem && chown root:root /etc/homegear/ca/private/cakey.pem && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 100000 -set_serial 0 -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=Homegear CA\"");
-
-        return std::make_shared<Ipc::Variable>(true);
+        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca && openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && chmod 400 /etc/homegear/ca/private/cakey.pem && chown root:root /etc/homegear/ca/private/cakey.pem && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 100000 -set_serial 0 -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=Homegear CA\""));
     }
     catch (const std::exception& ex)
     {
@@ -1187,7 +1209,6 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
         if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter is not of type String.");
 
         if(!BaseLib::Io::directoryExists("/etc/homegear/ca") || !BaseLib::Io::fileExists("/etc/homegear/ca/private/cakey.pem")) return Ipc::Variable::createError(-2, "No CA found.");
-        if(_commandThreadRunning) return Ipc::Variable::createError(-2, "A command is already being executed.");
 
         std::string commonName;
         commonName.reserve(parameters->at(0)->stringValue.size());
@@ -1203,23 +1224,14 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
         BaseLib::HelperFunctions::trim(output);
         if(output != "0") return Ipc::Variable::createError(-3, "A certificate with this common name already exists.");
 
-        {
-            std::lock_guard<std::mutex> outputGuard(_commandOutputMutex);
-            _commandStatus = 256;
-            _commandOutput = "";
-        }
+        auto metadata = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+        metadata->structValue->emplace("filenamePrefix", std::make_shared<Ipc::Variable>(filename));
+        metadata->structValue->emplace("commonNameUsed", std::make_shared<Ipc::Variable>(commonName));
+        metadata->structValue->emplace("caPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/cacert.pem"));
+        metadata->structValue->emplace("certPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/certs/" + filename + ".crt"));
+        metadata->structValue->emplace("keyPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/private/" + filename + ".key"));
 
-        if(_commandThread.joinable()) _commandThread.join();
-        _commandThread = std::thread(&IpcClient::executeCommand, this, "cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr");
-
-        auto result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
-        result->structValue->emplace("filenamePrefix", std::make_shared<Ipc::Variable>(filename));
-        result->structValue->emplace("commonNameUsed", std::make_shared<Ipc::Variable>(commonName));
-        result->structValue->emplace("caPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/cacert.pem"));
-        result->structValue->emplace("certPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/certs/" + filename + ".crt"));
-        result->structValue->emplace("keyPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/private/" + filename + ".key"));
-
-        return result;
+        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr", metadata));
     }
     catch (const std::exception& ex)
     {
