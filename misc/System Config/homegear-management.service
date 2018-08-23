@@ -1,6 +1,6 @@
 [Unit]
 Description=Homegear Management
-After=homegear
+After=homegear.service
 
 [Install]
 WantedBy=multi-user.target
