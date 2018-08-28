@@ -37,14 +37,18 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _disposing = false;
 
     {
-        std::string output;
-        BaseLib::HelperFunctions::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", output);
-        BaseLib::HelperFunctions::trim(output);
-        if(output.empty())
+        _rootIsReadOnly = GD::settings.rootIsReadOnly();
+        if(!_rootIsReadOnly)
         {
-            BaseLib::HelperFunctions::exec("grep '/dev/mmcblk0p1' /proc/mounts | grep -c '\\sro[\\s,]'", output);
+            std::string output;
+            BaseLib::HelperFunctions::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", output);
+            BaseLib::HelperFunctions::trim(output);
+            if(output.empty())
+            {
+                BaseLib::HelperFunctions::exec("grep '/dev/mmcblk0p1' /proc/mounts | grep -c '\\sro[\\s,]'", output);
+            }
+            _rootIsReadOnly = BaseLib::Math::getNumber(output) == 1;
         }
-        _rootIsReadOnly = BaseLib::Math::getNumber(output) == 1;
     }
 
     _localRpcMethods.emplace("managementSleep", std::bind(&IpcClient::sleep, this, std::placeholders::_1));

@@ -73,7 +73,7 @@ private:
     int32_t _currentCommandInfoId = 0;
     std::unordered_map<int32_t, PCommandInfo> _commandInfo;
     std::mutex _readOnlyCountMutex;
-    int32_t _readOnlyCount;
+    int32_t _readOnlyCount = 0;
 
     int32_t startCommandThread(std::string command, Ipc::PVariable metadata = std::make_shared<Ipc::Variable>());
     void executeCommand(PCommandInfo commandInfo);

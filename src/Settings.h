@@ -49,6 +49,7 @@ public:
 	bool enableCoreDumps() { return _enableCoreDumps; };
 	std::string workingDirectory() { return _workingDirectory; }
 	std::string logfilePath() { return _logfilePath; }
+    bool rootIsReadOnly() { return _rootIsReadOnly; }
 	uint32_t secureMemorySize() { return _secureMemorySize; }
     int32_t maxCommandThreads() { return _maxCommandThreads; }
     std::unordered_set<std::string> allowedServiceCommands() { return _allowedServiceCommands; }
@@ -67,6 +68,7 @@ private:
 	bool _enableCoreDumps = true;
 	std::string _workingDirectory;
 	std::string _logfilePath;
+    bool _rootIsReadOnly = false;
 	uint32_t _secureMemorySize = 65536;
     int32_t _maxCommandThreads = 30;
     std::unordered_set<std::string> _allowedServiceCommands;
