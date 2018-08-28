@@ -496,6 +496,7 @@ void IpcClient::setRootReadOnly(bool readOnly)
         if(readOnly)
         {
             _readOnlyCount--;
+            if(_readOnlyCount < 0) _readOnlyCount = 0;
             if(_readOnlyCount == 0) BaseLib::HelperFunctions::exec("sync; mount -o remount,ro /", output);
         }
         else
@@ -580,6 +581,8 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
 {
     try
     {
+        setRootReadOnly(false);
+
         std::string output;
         auto commandStatus = BaseLib::HelperFunctions::exec(commandInfo->command, output);
         std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
@@ -603,6 +606,7 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
         commandInfo->status = -1;
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
+    setRootReadOnly(true);
     commandInfo->running = false;
 }
 
