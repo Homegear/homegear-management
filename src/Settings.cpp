@@ -152,6 +152,11 @@ void Settings::load(std::string filename, std::string executablePath)
 					if(_logfilePath.back() != '/') _logfilePath.push_back('/');
 					GD::bl->out.printDebug("Debug: logfilePath set to " + _logfilePath);
 				}
+                else if(name == "rootisreadonly")
+                {
+                    _rootIsReadOnly = (value == "true");
+                    GD::bl->out.printDebug("Debug: rootIsReadOnly set to " + std::to_string(_rootIsReadOnly));
+                }
 				else if(name == "securememorysize")
 				{
 					_secureMemorySize = BaseLib::Math::getNumber(value);

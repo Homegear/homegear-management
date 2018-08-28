@@ -36,6 +36,21 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
     _disposing = false;
 
+    {
+        _rootIsReadOnly = GD::settings.rootIsReadOnly();
+        if(!_rootIsReadOnly)
+        {
+            std::string output;
+            BaseLib::HelperFunctions::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", output);
+            BaseLib::HelperFunctions::trim(output);
+            if(output.empty())
+            {
+                BaseLib::HelperFunctions::exec("grep '/dev/mmcblk0p1' /proc/mounts | grep -c '\\sro[\\s,]'", output);
+            }
+            _rootIsReadOnly = BaseLib::Math::getNumber(output) == 1;
+        }
+    }
+
     _localRpcMethods.emplace("managementSleep", std::bind(&IpcClient::sleep, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementDpkgPackageInstalled", std::bind(&IpcClient::dpkgPackageInstalled, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementGetCommandStatus", std::bind(&IpcClient::getCommandStatus, this, std::placeholders::_1));
@@ -471,6 +486,38 @@ void IpcClient::onConnect()
     }
 }
 
+void IpcClient::setRootReadOnly(bool readOnly)
+{
+    try
+    {
+        if(!_rootIsReadOnly) return;
+        std::string output;
+        std::lock_guard<std::mutex> readOnlyCountGuard(_readOnlyCountMutex);
+        if(readOnly)
+        {
+            _readOnlyCount--;
+            if(_readOnlyCount == 0) BaseLib::HelperFunctions::exec("sync; mount -o remount,ro /", output);
+        }
+        else
+        {
+            if(_readOnlyCount == 0) BaseLib::HelperFunctions::exec("mount -o remount,rw /", output);
+            _readOnlyCount++;
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
 int32_t IpcClient::startCommandThread(std::string command, Ipc::PVariable metadata)
 {
     try
@@ -813,14 +860,12 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
                 auto settingIterator = entry.second.find(parameters->at(1)->stringValue);
                 if(settingIterator == entry.second.end()) return Ipc::Variable::createError(-2, "You are not allowed to write this setting.");
 
-                std::string output;
-                BaseLib::HelperFunctions::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", output);
-                bool readOnly = BaseLib::Math::getNumber(output) == 1;
-                if(readOnly) BaseLib::HelperFunctions::exec("mount -o remount,rw /", output);
+                setRootReadOnly(false);
 
+                std::string output;
                 BaseLib::HelperFunctions::exec("sed -i \"s/^" + parameters->at(1)->stringValue + " .*/" + parameters->at(1)->stringValue + " = " + parameters->at(2)->stringValue + "/g\" /etc/homegear/" + parameters->at(0)->stringValue, output);
 
-                if(readOnly) BaseLib::HelperFunctions::exec("sync; mount -o remount,ro /", output);
+                setRootReadOnly(true);
 
                 return std::make_shared<Ipc::Variable>();
             }
@@ -856,6 +901,8 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
 
         if(!BaseLib::Io::directoryExists("/etc/openvpn/")) return Ipc::Variable::createError(-2, "Directory /etc/openvpn does not exist.");
 
+        setRootReadOnly(false);
+
         std::string cloudMaticCertPath = "/etc/openvpn/cloudmatic/";
         if(!BaseLib::Io::directoryExists(cloudMaticCertPath)) BaseLib::Io::createDirectory(cloudMaticCertPath, S_IRWXU | S_IRGRP | S_IXGRP);
         if(chown(cloudMaticCertPath.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << cloudMaticCertPath << std::endl;
@@ -885,6 +932,8 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
         BaseLib::Io::writeFile(filename, parameters->at(4)->stringValue);
         if(chown(filename.c_str(), 0, 0) == -1) std::cerr << "Could not set owner on " << filename << std::endl;
         if(chmod(filename.c_str(), S_IRUSR | S_IWUSR) == -1) std::cerr << "Could not set permissions on " << filename << std::endl;
+
+        setRootReadOnly(true);
 
         return std::make_shared<Ipc::Variable>();
     }
@@ -920,7 +969,11 @@ Ipc::PVariable IpcClient::setUserPassword(Ipc::PArray& parameters)
         int32_t userId = BaseLib::Math::getNumber(output);
         if(userId < 1000) return Ipc::Variable::createError(-2, "User has a UID less than 1000 or UID could not be determined.");
 
+        setRootReadOnly(false);
+
         BaseLib::HelperFunctions::exec("echo '" + parameters->at(0)->stringValue + ":" + parameters->at(1)->stringValue + "' | chpasswd ", output);
+
+        setRootReadOnly(true);
 
         return std::make_shared<Ipc::Variable>();
     }
@@ -1144,7 +1197,7 @@ Ipc::PVariable IpcClient::restoreBackup(Ipc::PArray& parameters)
         if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
         if(!BaseLib::Io::fileExists(parameters->at(0)->stringValue)) return Ipc::Variable::createError(-1, "Parameter 1 is not a valid file.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("mount -o remount,rw /;chown root:root /var/lib/homegear/scripts/RestoreHomegear.sh;chmod 750 /var/lib/homegear/scripts/RestoreHomegear.sh;cp -a /var/lib/homegear/scripts/RestoreHomegear.sh /;/RestoreHomegear.sh \"" + parameters->at(0)->stringValue + "\";rm -f /RestoreHomegear.sh"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/RestoreHomegear.sh;chmod 750 /var/lib/homegear/scripts/RestoreHomegear.sh;cp -a /var/lib/homegear/scripts/RestoreHomegear.sh /;/RestoreHomegear.sh \"" + parameters->at(0)->stringValue + "\";rm -f /RestoreHomegear.sh"));
     }
     catch (const std::exception& ex)
     {
@@ -1190,11 +1243,15 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
     {
         if(BaseLib::Io::directoryExists("/etc/homegear/ca") && BaseLib::Io::fileExists("/etc/homegear/ca/private/cakey.pem")) return std::make_shared<Ipc::Variable>(false);
 
+        setRootReadOnly(false);
+
         std::string output;
         BaseLib::HelperFunctions::exec("sed -i \"/^dir[ \\t]/c\\dir = \\/etc\\/homegear\\/ca\" /usr/lib/ssl/openssl.cnf", output);
         BaseLib::HelperFunctions::exec("mkdir /etc/homegear/ca /etc/homegear/ca/newcerts /etc/homegear/ca/certs /etc/homegear/ca/crl /etc/homegear/ca/private /etc/homegear/ca/requests", output);
         BaseLib::HelperFunctions::exec("touch /etc/homegear/ca/index.txt", output);
         BaseLib::HelperFunctions::exec("echo \"1000\" > /etc/homegear/ca/serial", output);
+
+        setRootReadOnly(true);
 
         return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca && openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && chmod 400 /etc/homegear/ca/private/cakey.pem && chown root:root /etc/homegear/ca/private/cakey.pem && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 100000 -set_serial 0 -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=Homegear CA\""));
     }
@@ -1269,6 +1326,8 @@ Ipc::PVariable IpcClient::deleteCert(Ipc::PArray& parameters)
 
         if(!BaseLib::Io::directoryExists("/etc/homegear/ca") || !BaseLib::Io::fileExists("/etc/homegear/ca/private/cakey.pem")) return Ipc::Variable::createError(-2, "No CA found.");
 
+        setRootReadOnly(false);
+
         std::string commonName;
         commonName.reserve(parameters->at(0)->stringValue.size());
         for(std::string::const_iterator i = parameters->at(0)->stringValue.begin(); i != parameters->at(0)->stringValue.end(); ++i)
@@ -1282,7 +1341,11 @@ Ipc::PVariable IpcClient::deleteCert(Ipc::PArray& parameters)
         BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", output);
         BaseLib::HelperFunctions::trim(output);
         bool fileExists = output != "0" || BaseLib::Io::fileExists("/etc/homegear/ca/certs/" + filename + ".crt") || BaseLib::Io::fileExists("/etc/homegear/ca/private/" + filename + ".key");
-        if(!fileExists) return std::make_shared<Ipc::Variable>(1);
+        if(!fileExists)
+        {
+            setRootReadOnly(true);
+            return std::make_shared<Ipc::Variable>(1);
+        }
 
         BaseLib::HelperFunctions::exec("sed -i \"/.*CN=" + commonName + "$/d\" /etc/homegear/ca/index.txt; rm -f /etc/homegear/ca/certs/" + filename + ".crt; rm -f /etc/homegear/ca/private/" + filename + ".key; sync", output);
 
@@ -1290,6 +1353,7 @@ Ipc::PVariable IpcClient::deleteCert(Ipc::PArray& parameters)
         BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", output);
         BaseLib::HelperFunctions::trim(output);
         fileExists = output != "0" || BaseLib::Io::fileExists("/etc/homegear/ca/certs/" + filename + ".crt") || BaseLib::Io::fileExists("/etc/homegear/ca/private/" + filename + ".key");
+        setRootReadOnly(true);
         if(!fileExists) return std::make_shared<Ipc::Variable>(0);
         else return std::make_shared<Ipc::Variable>(-1);
     }
@@ -1320,7 +1384,13 @@ Ipc::PVariable IpcClient::copyDeviceDescriptionFile(Ipc::PArray& parameters)
 
         BaseLib::HelperFunctions::stripNonPrintable(parameters->at(0)->stringValue);
 
-        return std::make_shared<Ipc::Variable>(GD::bl->io.copyFile(parameters->at(0)->stringValue, "/etc/homegear/devices/" + std::to_string(parameters->at(1)->integerValue) + "/"+ BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/').second));
+        setRootReadOnly(false);
+
+        auto result = std::make_shared<Ipc::Variable>(GD::bl->io.copyFile(parameters->at(0)->stringValue, "/etc/homegear/devices/" + std::to_string(parameters->at(1)->integerValue) + "/"+ BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/').second));
+
+        setRootReadOnly(true);
+
+        return result;
     }
     catch (const std::exception& ex)
     {

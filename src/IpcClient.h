@@ -68,12 +68,17 @@ private:
     typedef std::shared_ptr<CommandInfo> PCommandInfo;
 
     std::atomic_bool _disposing;
+    std::atomic_bool _rootIsReadOnly;
     std::mutex _commandInfoMutex;
     int32_t _currentCommandInfoId = 0;
     std::unordered_map<int32_t, PCommandInfo> _commandInfo;
+    std::mutex _readOnlyCountMutex;
+    int32_t _readOnlyCount = 0;
 
     int32_t startCommandThread(std::string command, Ipc::PVariable metadata = std::make_shared<Ipc::Variable>());
     void executeCommand(PCommandInfo commandInfo);
+
+    void setRootReadOnly(bool readOnly);
 
     // {{{ RPC methods
     Ipc::PVariable dpkgPackageInstalled(Ipc::PArray& parameters);
