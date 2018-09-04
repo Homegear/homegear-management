@@ -84,6 +84,11 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("managementDeleteCert", std::bind(&IpcClient::deleteCert, this, std::placeholders::_1));
     // }}}
 
+    // {{{ System configuration
+    _localRpcMethods.emplace("managementGetNetworkConfiguration", std::bind(&IpcClient::getNetworkConfiguration, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementSetNetworkConfiguration", std::bind(&IpcClient::setNetworkConfiguration, this, std::placeholders::_1));
+    // }}}
+
     // {{{ Device description files
     _localRpcMethods.emplace("managementCopyDeviceDescriptionFile", std::bind(&IpcClient::copyDeviceDescriptionFile, this, std::placeholders::_1));
     // }}}
@@ -449,6 +454,40 @@ void IpcClient::onConnect()
         }
         if (error) return;
         //}}}
+
+        // {{{ System configuration
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementGetNetworkConfiguration"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementGetNetworkConfiguration: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementSetNetworkConfiguration"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //1st parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementSetNetworkConfiguration: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+        // }}}
 
         // {{{ Device description files
         parameters = std::make_shared<Ipc::Array>();
@@ -1360,6 +1399,63 @@ Ipc::PVariable IpcClient::deleteCert(Ipc::PArray& parameters)
         setRootReadOnly(true);
         if(!fileExists) return std::make_shared<Ipc::Variable>(0);
         else return std::make_shared<Ipc::Variable>(-1);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
+// {{{ System configuration
+Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+
+
+
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tStruct) return Ipc::Variable::createError(-1, "Parameter 1 is not of type Struct.");
+
+        setRootReadOnly(false);
+
+
+
+        setRootReadOnly(true);
+
+        
     }
     catch (const std::exception& ex)
     {

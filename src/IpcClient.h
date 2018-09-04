@@ -115,6 +115,58 @@ private:
     Ipc::PVariable deleteCert(Ipc::PArray& parameters);
     // }}}
 
+    // {{{ System configuration
+        /**
+         * Parses and returns the content of the file `/etc/network/interfaces` and the Homegear section of `/etc/resolvconf/resolv.conf.d/head`.
+         *
+         * The returned Struct looks like this:
+         *
+         *     {
+         *         "eth0": {
+         *             "ipv4": {
+         *                 type: "static", // or type: "dhcp"
+         *                 address: "192.168.178.5",
+         *                 subnet: "255.255.255.0"
+         *             },
+         *             "ipv6": {
+         *                 type: "auto", // or type: "static"
+         *                 address: "fdab:1::5",
+         *                 subnet: "64"
+         *             },
+         *             "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
+         *         }
+         *     }
+         *
+         * @param parameters This method has no parameters.
+         * @return Returns the content of the file `/etc/network/interfaces` as a Struct.
+         */
+        Ipc::PVariable getNetworkConfiguration(Ipc::PArray& parameters);
+
+        /**
+         * Sets the content of the file `/etc/network/interfaces`. You need to provice a Struct with the new configuration as parameter:
+         *
+         *     {
+         *         "eth0": {
+         *             "ipv4": {
+         *                 type: "static", // or type: "dhcp"
+         *                 address: "192.168.178.5",
+         *                 subnet: "255.255.255.0"
+         *             },
+         *             "ipv6": {
+         *                 type: "auto", // or type: "static"
+         *                 address: "fdab:1::5",
+         *                 subnet: "64"
+         *             },
+         *             "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
+         *         }
+         *     }
+         *
+         * @param parameters The new network configuration as a Struct.
+         * @return Returns Void on success.
+         */
+        Ipc::PVariable setNetworkConfiguration(Ipc::PArray& parameters);
+    // }}}
+
     // {{{ Device description files
     Ipc::PVariable copyDeviceDescriptionFile(Ipc::PArray& parameters);
     // }}}
