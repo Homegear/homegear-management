@@ -1172,7 +1172,7 @@ Ipc::PVariable IpcClient::systemUpdateAvailable(Ipc::PArray& parameters)
         BaseLib::HelperFunctions::trim(output);
         auto count = BaseLib::Math::getNumber(output);
 
-        return std::make_shared<Ipc::Variable>(count > 1);
+        return std::make_shared<Ipc::Variable>(count > 0);
     }
     catch (const std::exception& ex)
     {
