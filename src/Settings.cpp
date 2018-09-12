@@ -44,7 +44,7 @@ void Settings::reset()
 	_memoryDebugging = false;
 	_enableCoreDumps = true;
 	_workingDirectory = _executablePath;
-	_logfilePath = "/var/log/homegear-management/";
+	_logfilePath = "/var/log/homegear/";
 	_secureMemorySize = 65536;
     _maxCommandThreads = 30;
     _allowedServiceCommands.clear();
@@ -148,7 +148,7 @@ void Settings::load(std::string filename, std::string executablePath)
 				else if(name == "logfilepath")
 				{
 					_logfilePath = value;
-					if(_logfilePath.empty()) _logfilePath = "/var/log/homegear-management/";
+					if(_logfilePath.empty()) _logfilePath = "/var/log/homegear/";
 					if(_logfilePath.back() != '/') _logfilePath.push_back('/');
 					GD::bl->out.printDebug("Debug: logfilePath set to " + _logfilePath);
 				}
