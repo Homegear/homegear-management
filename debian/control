@@ -3,11 +3,11 @@ Maintainer: Sathya Laufer <sathya@laufers.net>
 Section: misc
 Priority: optional
 Standards-Version: 3.9.6
-Build-Depends: debhelper (>= 8), libhomegear-base (= <BASELIBVER>), libgcrypt20-dev, libgpg-error-dev (>= 1.10), libgnutls28-dev
+Build-Depends: debhelper (>= 8), libhomegear-base (= <BASELIBVER>), libhomegear-ipc, libgcrypt20-dev, libgpg-error-dev (>= 1.10), libgnutls28-dev
 Homepage: https://homegear.eu
 
 Package: homegear-management
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libhomegear-base (= <BASELIBVER>), libgcrypt20, libgnutlsxx28, libgpg-error0 (>= 1.10), procps
+Depends: ${shlibs:Depends}, ${misc:Depends}, libhomegear-base (= <BASELIBVER>), libhomegear-ipc, libgcrypt20, libgnutlsxx28, libgpg-error0 (>= 1.10), procps
 Description: Management service for Homegear
  Management service for root operations.
