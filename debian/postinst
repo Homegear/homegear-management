@@ -4,10 +4,6 @@ case $1 in
 	# Configure this package. If the package must prompt the user for
 	# information, do it here.
 	configure)
-		mkdir -p /var/log/homegear-management
-		chown root:root /var/log/homegear-management
-		chmod 750 /var/log/homegear-management
-
 		pidof systemd
 		if [ $? -eq 0 ]; then
 			systemctl enable homegear-management.service
