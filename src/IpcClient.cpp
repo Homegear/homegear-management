@@ -1172,7 +1172,8 @@ Ipc::PVariable IpcClient::systemUpdateAvailable(Ipc::PArray& parameters)
         BaseLib::HelperFunctions::trim(output);
         auto count = BaseLib::Math::getNumber(output);
 
-        return std::make_shared<Ipc::Variable>(count > 0);
+        //The exec above returns "Listing..." (count == 1) when no update is available
+        return std::make_shared<Ipc::Variable>(count > 1);
     }
     catch (const std::exception& ex)
     {
