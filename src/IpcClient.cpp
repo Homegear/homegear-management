@@ -1340,7 +1340,7 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
         std::string filename = BaseLib::HelperFunctions::stripNonAlphaNumeric(commonName);
 
         std::string output;
-        BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", output);
+        BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "$\"", output);
         BaseLib::HelperFunctions::trim(output);
         if(output != "0") return Ipc::Variable::createError(-3, "A certificate with this common name already exists.");
 
