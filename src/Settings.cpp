@@ -45,6 +45,7 @@ void Settings::reset()
 	_enableCoreDumps = true;
 	_workingDirectory = _executablePath;
 	_logfilePath = "/var/log/homegear/";
+	_homegearDataPath = "/var/lib/homegear/";
 	_secureMemorySize = 65536;
     _maxCommandThreads = 30;
     _allowedServiceCommands.clear();
@@ -152,6 +153,13 @@ void Settings::load(std::string filename, std::string executablePath)
 					if(_logfilePath.back() != '/') _logfilePath.push_back('/');
 					GD::bl->out.printDebug("Debug: logfilePath set to " + _logfilePath);
 				}
+                else if(name == "homegeardatapath")
+                {
+                    _homegearDataPath = value;
+                    if(_homegearDataPath.empty()) _homegearDataPath = "/var/lib/homegear/";
+                    if(_homegearDataPath.back() != '/') _homegearDataPath.push_back('/');
+                    GD::bl->out.printDebug("Debug: homegearDataPath set to " + _homegearDataPath);
+                }
                 else if(name == "rootisreadonly")
                 {
                     _rootIsReadOnly = (value == "true");

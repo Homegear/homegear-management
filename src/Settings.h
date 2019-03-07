@@ -49,6 +49,7 @@ public:
 	bool enableCoreDumps() { return _enableCoreDumps; };
 	std::string workingDirectory() { return _workingDirectory; }
 	std::string logfilePath() { return _logfilePath; }
+    std::string homegearDataPath() { return _homegearDataPath; }
     bool rootIsReadOnly() { return _rootIsReadOnly; }
 	uint32_t secureMemorySize() { return _secureMemorySize; }
     int32_t maxCommandThreads() { return _maxCommandThreads; }
@@ -68,6 +69,7 @@ private:
 	bool _enableCoreDumps = true;
 	std::string _workingDirectory;
 	std::string _logfilePath;
+	std::string _homegearDataPath;
     bool _rootIsReadOnly = false;
 	uint32_t _secureMemorySize = 65536;
     int32_t _maxCommandThreads = 30;

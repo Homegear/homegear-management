@@ -525,6 +525,36 @@ void IpcClient::onConnect()
     }
 }
 
+void IpcClient::onConnectError()
+{
+    try
+    {
+        if(BaseLib::Io::fileExists(GD::settings.homegearDataPath() + "homegear_updated"))
+        {
+            std::string output;
+            BaseLib::HelperFunctions::exec(R"(lsof /var/lib/dpkg/lock >/dev/null 2>&1 || echo "true")", output);
+            BaseLib::HelperFunctions::trim(output);
+            if(output == "true")
+            {
+                BaseLib::Io::deleteFile(GD::settings.homegearDataPath() + "homegear_updated");
+                BaseLib::HelperFunctions::exec(R"(reboot)", output);
+            }
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (Ipc::IpcException& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch (...)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
+}
+
 void IpcClient::setRootReadOnly(bool readOnly)
 {
     try
