@@ -42,28 +42,24 @@
 class IpcClient : public Ipc::IIpcClient
 {
 public:
-    IpcClient(std::string socketPath);
-    virtual ~IpcClient();
+    explicit IpcClient(std::string socketPath);
+
+    ~IpcClient() override;
 private:
-    virtual void onConnect();
+    void onConnect() override;
+    void onConnectError() override;
 
     class CommandInfo
     {
     public:
         int64_t endTime = 0;
         std::string command;
-        std::atomic_bool running;
+        std::atomic_bool running {false};
         std::thread thread;
         std::mutex outputMutex;
         std::string output;
-        std::atomic_int status;
+        std::atomic_int status {-1};
         Ipc::PVariable metadata;
-
-        CommandInfo()
-        {
-            running = false;
-            status = -1;
-        }
     };
     typedef std::shared_ptr<CommandInfo> PCommandInfo;
 
