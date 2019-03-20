@@ -5,7 +5,6 @@ case "$1" in
         ;;
 
     upgrade|abort-upgrade)
-    	service homegear-management stop
         ;;
 esac
 
