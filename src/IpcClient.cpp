@@ -537,7 +537,7 @@ void IpcClient::onConnectError()
             if(output == "true")
             {
                 BaseLib::Io::deleteFile(GD::settings.homegearDataPath() + "homegear_updated");
-                BaseLib::HelperFunctions::exec(R"(service homegear start)", output);
+                BaseLib::HelperFunctions::exec(R"(service homegear restart)", output);
                 BaseLib::HelperFunctions::exec(R"(service homegear-management restart)", output);
             }
         }
