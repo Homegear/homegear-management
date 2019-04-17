@@ -28,9 +28,11 @@
  * files in the program, then also delete it here.
 */
 
-#include <sys/stat.h>
 #include "IpcClient.h"
 #include "GD.h"
+#include <homegear-base/Managers/ProcessManager.h>
+
+#include <sys/stat.h>
 
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
@@ -41,11 +43,11 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
         if(!_rootIsReadOnly)
         {
             std::string output;
-            BaseLib::HelperFunctions::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", output);
+            BaseLib::ProcessManager::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
             BaseLib::HelperFunctions::trim(output);
             if(output.empty())
             {
-                BaseLib::HelperFunctions::exec("grep '/dev/mmcblk0p1' /proc/mounts | grep -c '\\sro[\\s,]'", output);
+                BaseLib::ProcessManager::exec("grep '/dev/mmcblk0p1' /proc/mounts | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
             }
             _rootIsReadOnly = BaseLib::Math::getNumber(output) == 1;
         }
@@ -515,14 +517,6 @@ void IpcClient::onConnect()
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
 }
 
 void IpcClient::onConnectError()
@@ -532,27 +526,19 @@ void IpcClient::onConnectError()
         if(BaseLib::Io::fileExists(GD::settings.homegearDataPath() + "homegear_updated"))
         {
             std::string output;
-            BaseLib::HelperFunctions::exec(R"(lsof /var/lib/dpkg/lock >/dev/null 2>&1 || echo "true")", output);
+            BaseLib::ProcessManager::exec(R"(lsof /var/lib/dpkg/lock >/dev/null 2>&1 || echo "true")", GD::bl->fileDescriptorManager.getMax(), output);
             BaseLib::HelperFunctions::trim(output);
             if(output == "true")
             {
                 BaseLib::Io::deleteFile(GD::settings.homegearDataPath() + "homegear_updated");
-                BaseLib::HelperFunctions::exec(R"(service homegear restart)", output);
-                BaseLib::HelperFunctions::exec(R"(service homegear-management restart)", output);
+                BaseLib::ProcessManager::exec(R"(service homegear restart)", GD::bl->fileDescriptorManager.getMax(), output);
+                BaseLib::ProcessManager::exec(R"(service homegear-management restart)", GD::bl->fileDescriptorManager.getMax(), output);
             }
         }
     }
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -567,25 +553,17 @@ void IpcClient::setRootReadOnly(bool readOnly)
         {
             _readOnlyCount--;
             if(_readOnlyCount < 0) _readOnlyCount = 0;
-            if(_readOnlyCount == 0) BaseLib::HelperFunctions::exec("sync; mount -o remount,ro /", output);
+            if(_readOnlyCount == 0) BaseLib::ProcessManager::exec("sync; mount -o remount,ro /", GD::bl->fileDescriptorManager.getMax(), output);
         }
         else
         {
-            if(_readOnlyCount == 0) BaseLib::HelperFunctions::exec("mount -o remount,rw /", output);
+            if(_readOnlyCount == 0) BaseLib::ProcessManager::exec("mount -o remount,rw /", GD::bl->fileDescriptorManager.getMax(), output);
             _readOnlyCount++;
         }
     }
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
 
@@ -636,14 +614,6 @@ int32_t IpcClient::startCommandThread(std::string command, Ipc::PVariable metada
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return -1;
 }
 
@@ -654,7 +624,7 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
         setRootReadOnly(false);
 
         std::string output;
-        auto commandStatus = BaseLib::HelperFunctions::exec(commandInfo->command, output);
+        auto commandStatus = BaseLib::ProcessManager::exec(commandInfo->command, GD::bl->fileDescriptorManager.getMax(), output);
         std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
         commandInfo->status = commandStatus;
         commandInfo->output = std::move(output);
@@ -665,16 +635,6 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
     {
         commandInfo->status = -1;
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        commandInfo->status = -1;
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        commandInfo->status = -1;
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     setRootReadOnly(true);
     commandInfo->running = false;
@@ -746,14 +706,6 @@ Ipc::PVariable IpcClient::getCommandStatus(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -770,14 +722,6 @@ Ipc::PVariable IpcClient::sleep(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -791,7 +735,7 @@ Ipc::PVariable IpcClient::dpkgPackageInstalled(Ipc::PArray& parameters)
         auto package = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
 
         std::string output;
-        auto commandStatus = BaseLib::HelperFunctions::exec("dpkg-query -W -f '${db:Status-Abbrev}|${binary:Package}\\n' '*' 2>/dev/null | grep '^ii' | awk -F '|' '{print $2}' | cut -d ':' -f 1 | grep ^" + package + "$", output);
+        auto commandStatus = BaseLib::ProcessManager::exec("dpkg-query -W -f '${db:Status-Abbrev}|${binary:Package}\\n' '*' 2>/dev/null | grep '^ii' | awk -F '|' '{print $2}' | cut -d ':' -f 1 | grep ^" + package + "$", GD::bl->fileDescriptorManager.getMax(), output);
 
         if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
 
@@ -802,14 +746,6 @@ Ipc::PVariable IpcClient::dpkgPackageInstalled(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -834,14 +770,6 @@ Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -856,14 +784,6 @@ Ipc::PVariable IpcClient::reboot(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -887,7 +807,7 @@ Ipc::PVariable IpcClient::getConfigurationEntry(Ipc::PArray& parameters)
                 if(settingIterator == entry.second.end()) return Ipc::Variable::createError(-2, "You are not allowed to read this setting.");
 
                 std::string output;
-                BaseLib::HelperFunctions::exec("cat /etc/homegear/" + parameters->at(0)->stringValue + " | grep \"^" + parameters->at(1)->stringValue + " \"", output);
+                BaseLib::ProcessManager::exec("cat /etc/homegear/" + parameters->at(0)->stringValue + " | grep \"^" + parameters->at(1)->stringValue + " \"", GD::bl->fileDescriptorManager.getMax(), output);
 
                 BaseLib::HelperFunctions::trim(output);
                 auto settingPair = BaseLib::HelperFunctions::splitFirst(output, '=');
@@ -901,14 +821,6 @@ Ipc::PVariable IpcClient::getConfigurationEntry(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -937,7 +849,7 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
                 setRootReadOnly(false);
 
                 std::string output;
-                BaseLib::HelperFunctions::exec("sed -i \"s/^" + parameters->at(1)->stringValue + " .*/" + parameters->at(1)->stringValue + " = " + parameters->at(2)->stringValue + "/g\" /etc/homegear/" + parameters->at(0)->stringValue, output);
+                BaseLib::ProcessManager::exec("sed -i \"s/^" + parameters->at(1)->stringValue + " .*/" + parameters->at(1)->stringValue + " = " + parameters->at(2)->stringValue + "/g\" /etc/homegear/" + parameters->at(0)->stringValue, GD::bl->fileDescriptorManager.getMax(), output);
 
                 setRootReadOnly(true);
 
@@ -950,14 +862,6 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1015,14 +919,6 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1039,13 +935,13 @@ Ipc::PVariable IpcClient::setUserPassword(Ipc::PArray& parameters)
         BaseLib::HelperFunctions::stringReplace(parameters->at(1)->stringValue, "'", "'\\''");
 
         std::string output;
-        BaseLib::HelperFunctions::exec("id -u " + parameters->at(0)->stringValue, output);
+        BaseLib::ProcessManager::exec("id -u " + parameters->at(0)->stringValue, GD::bl->fileDescriptorManager.getMax(), output);
         int32_t userId = BaseLib::Math::getNumber(output);
         if(userId < 1000) return Ipc::Variable::createError(-2, "User has a UID less than 1000 or UID could not be determined.");
 
         setRootReadOnly(false);
 
-        BaseLib::HelperFunctions::exec("echo '" + parameters->at(0)->stringValue + ":" + parameters->at(1)->stringValue + "' | chpasswd ", output);
+        BaseLib::ProcessManager::exec("echo '" + parameters->at(0)->stringValue + ":" + parameters->at(1)->stringValue + "' | chpasswd ", GD::bl->fileDescriptorManager.getMax(), output);
 
         setRootReadOnly(true);
 
@@ -1054,14 +950,6 @@ Ipc::PVariable IpcClient::setUserPassword(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1080,14 +968,6 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1102,11 +982,11 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
         std::ostringstream packages;
         if(parameters->at(0)->integerValue == 0)
         {
-            BaseLib::HelperFunctions::exec("apt list --upgradable 2>/dev/null | grep -v homegear", output);
+            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -v homegear", GD::bl->fileDescriptorManager.getMax(), output);
         }
         else if(parameters->at(0)->integerValue == 1)
         {
-            BaseLib::HelperFunctions::exec("apt list --upgradable 2>/dev/null | grep homegear", output);
+            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep homegear", GD::bl->fileDescriptorManager.getMax(), output);
         }
         else return Ipc::Variable::createError(-1, "Parameter has invalid value.");
 
@@ -1125,14 +1005,6 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1148,14 +1020,6 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1166,7 +1030,7 @@ Ipc::PVariable IpcClient::homegearUpdateAvailable(Ipc::PArray& parameters)
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
         std::string output;
-        BaseLib::HelperFunctions::exec("apt list --upgradable 2>/dev/null | grep homegear/", output);
+        BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep homegear/", GD::bl->fileDescriptorManager.getMax(), output);
 
         if(output.empty()) return std::make_shared<Ipc::Variable>(false);
 
@@ -1180,14 +1044,6 @@ Ipc::PVariable IpcClient::homegearUpdateAvailable(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1198,7 +1054,7 @@ Ipc::PVariable IpcClient::systemUpdateAvailable(Ipc::PArray& parameters)
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
         std::string output;
-        BaseLib::HelperFunctions::exec("apt list --upgradable 2>/dev/null | grep -c -v homegear", output);
+        BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -c -v homegear", GD::bl->fileDescriptorManager.getMax(), output);
 
         BaseLib::HelperFunctions::trim(output);
         auto count = BaseLib::Math::getNumber(output);
@@ -1209,14 +1065,6 @@ Ipc::PVariable IpcClient::systemUpdateAvailable(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1237,7 +1085,7 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
             {
                 BaseLib::Io::createDirectory("/data/homegear-data/backups", S_IRWXU | S_IRWXG);
                 std::string output;
-                BaseLib::HelperFunctions::exec("chown homegear:homegear /data/homegear-data/backups", output);
+                BaseLib::ProcessManager::exec("chown homegear:homegear /data/homegear-data/backups", GD::bl->fileDescriptorManager.getMax(), output);
             }
 
             file = "/data/homegear-data/backups/" + std::to_string(time) + "_homegear-backup.tar.gz";
@@ -1252,14 +1100,6 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1278,14 +1118,6 @@ Ipc::PVariable IpcClient::restoreBackup(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 // }}}
@@ -1301,14 +1133,6 @@ Ipc::PVariable IpcClient::caExists(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-    }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1321,10 +1145,10 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
         setRootReadOnly(false);
 
         std::string output;
-        BaseLib::HelperFunctions::exec("sed -i \"/^dir[ \\t]/c\\dir = \\/etc\\/homegear\\/ca\" /usr/lib/ssl/openssl.cnf", output);
-        BaseLib::HelperFunctions::exec("mkdir /etc/homegear/ca /etc/homegear/ca/newcerts /etc/homegear/ca/certs /etc/homegear/ca/crl /etc/homegear/ca/private /etc/homegear/ca/requests", output);
-        BaseLib::HelperFunctions::exec("touch /etc/homegear/ca/index.txt", output);
-        BaseLib::HelperFunctions::exec("echo \"1000\" > /etc/homegear/ca/serial", output);
+        BaseLib::ProcessManager::exec("sed -i \"/^dir[ \\t]/c\\dir = \\/etc\\/homegear\\/ca\" /usr/lib/ssl/openssl.cnf", GD::bl->fileDescriptorManager.getMax(), output);
+        BaseLib::ProcessManager::exec("mkdir /etc/homegear/ca /etc/homegear/ca/newcerts /etc/homegear/ca/certs /etc/homegear/ca/crl /etc/homegear/ca/private /etc/homegear/ca/requests", GD::bl->fileDescriptorManager.getMax(), output);
+        BaseLib::ProcessManager::exec("touch /etc/homegear/ca/index.txt", GD::bl->fileDescriptorManager.getMax(), output);
+        BaseLib::ProcessManager::exec("echo \"1000\" > /etc/homegear/ca/serial", GD::bl->fileDescriptorManager.getMax(), output);
 
         setRootReadOnly(true);
 
@@ -1340,14 +1164,6 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1371,7 +1187,7 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
         std::string filename = BaseLib::HelperFunctions::stripNonAlphaNumeric(commonName);
 
         std::string output;
-        BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "$\"", output);
+        BaseLib::ProcessManager::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "$\"", GD::bl->fileDescriptorManager.getMax(), output);
         BaseLib::HelperFunctions::trim(output);
         if(output != "0") return Ipc::Variable::createError(-3, "A certificate with this common name already exists.");
 
@@ -1387,14 +1203,6 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1420,7 +1228,7 @@ Ipc::PVariable IpcClient::deleteCert(Ipc::PArray& parameters)
         std::string filename = BaseLib::HelperFunctions::stripNonAlphaNumeric(commonName);
 
         std::string output;
-        BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", output);
+        BaseLib::ProcessManager::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", GD::bl->fileDescriptorManager.getMax(), output);
         BaseLib::HelperFunctions::trim(output);
         bool fileExists = output != "0" || BaseLib::Io::fileExists("/etc/homegear/ca/certs/" + filename + ".crt") || BaseLib::Io::fileExists("/etc/homegear/ca/private/" + filename + ".key");
         if(!fileExists)
@@ -1429,10 +1237,10 @@ Ipc::PVariable IpcClient::deleteCert(Ipc::PArray& parameters)
             return std::make_shared<Ipc::Variable>(1);
         }
 
-        BaseLib::HelperFunctions::exec("sed -i \"/.*CN=" + commonName + "$/d\" /etc/homegear/ca/index.txt; rm -f /etc/homegear/ca/certs/" + filename + ".crt; rm -f /etc/homegear/ca/private/" + filename + ".key; sync", output);
+        BaseLib::ProcessManager::exec("sed -i \"/.*CN=" + commonName + "$/d\" /etc/homegear/ca/index.txt; rm -f /etc/homegear/ca/certs/" + filename + ".crt; rm -f /etc/homegear/ca/private/" + filename + ".key; sync", GD::bl->fileDescriptorManager.getMax(), output);
 
         output.clear();
-        BaseLib::HelperFunctions::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", output);
+        BaseLib::ProcessManager::exec("cat /etc/homegear/ca/index.txt | grep -c \"CN=" + commonName + "\"", GD::bl->fileDescriptorManager.getMax(), output);
         BaseLib::HelperFunctions::trim(output);
         fileExists = output != "0" || BaseLib::Io::fileExists("/etc/homegear/ca/certs/" + filename + ".crt") || BaseLib::Io::fileExists("/etc/homegear/ca/private/" + filename + ".key");
         setRootReadOnly(true);
@@ -1442,14 +1250,6 @@ Ipc::PVariable IpcClient::deleteCert(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1469,14 +1269,6 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1499,14 +1291,6 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -1534,14 +1318,6 @@ Ipc::PVariable IpcClient::copyDeviceDescriptionFile(Ipc::PArray& parameters)
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (Ipc::IpcException& ex)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch (...)
-    {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
