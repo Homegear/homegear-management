@@ -531,8 +531,8 @@ void IpcClient::onConnectError()
             if(output == "true")
             {
                 BaseLib::Io::deleteFile(GD::settings.homegearDataPath() + "homegear_updated");
-                BaseLib::ProcessManager::exec(R"(service homegear restart)", GD::bl->fileDescriptorManager.getMax(), output);
-                BaseLib::ProcessManager::exec(R"(service homegear-management restart)", GD::bl->fileDescriptorManager.getMax(), output);
+                BaseLib::ProcessManager::exec(R"((service homegear restart&) &)", GD::bl->fileDescriptorManager.getMax(), output);
+                BaseLib::ProcessManager::exec(R"((service homegear-management restart&) &)", GD::bl->fileDescriptorManager.getMax(), output);
             }
         }
     }
