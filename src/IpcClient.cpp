@@ -525,6 +525,7 @@ void IpcClient::onConnectError()
     {
         if(BaseLib::Io::fileExists(GD::settings.homegearDataPath() + "homegear_updated"))
         {
+            setRootReadOnly(false);
             std::string output;
             BaseLib::ProcessManager::exec(R"(lsof /var/lib/dpkg/lock >/dev/null 2>&1 || echo "true")", GD::bl->fileDescriptorManager.getMax(), output);
             BaseLib::HelperFunctions::trim(output);
@@ -540,6 +541,7 @@ void IpcClient::onConnectError()
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
+    setRootReadOnly(true);
 }
 
 void IpcClient::setRootReadOnly(bool readOnly)
