@@ -78,6 +78,7 @@ private:
 
     // {{{ RPC methods
     Ipc::PVariable dpkgPackageInstalled(Ipc::PArray& parameters);
+    Ipc::PVariable getSystemInfo(Ipc::PArray& parameters);
     Ipc::PVariable getCommandStatus(Ipc::PArray& parameters);
     Ipc::PVariable sleep(Ipc::PArray& parameters);
     Ipc::PVariable getConfigurationEntry(Ipc::PArray& parameters);
@@ -89,6 +90,11 @@ private:
 
     // {{{ User management
     Ipc::PVariable setUserPassword(Ipc::PArray& parameters);
+    // }}}
+
+    // {{{ Node management
+    Ipc::PVariable installNode(Ipc::PArray& parameters);
+    Ipc::PVariable uninstallNode(Ipc::PArray& parameters);
     // }}}
 
     // {{{ Updates

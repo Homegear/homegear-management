@@ -55,6 +55,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 
     _localRpcMethods.emplace("managementSleep", std::bind(&IpcClient::sleep, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementDpkgPackageInstalled", std::bind(&IpcClient::dpkgPackageInstalled, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementGetSystemInfo", std::bind(&IpcClient::getSystemInfo, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementGetCommandStatus", std::bind(&IpcClient::getCommandStatus, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementGetConfigurationEntry", std::bind(&IpcClient::getConfigurationEntry, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementSetConfigurationEntry", std::bind(&IpcClient::setConfigurationEntry, this, std::placeholders::_1));
@@ -64,6 +65,11 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 
     // {{{ User management
     _localRpcMethods.emplace("managementSetUserPassword", std::bind(&IpcClient::setUserPassword, this, std::placeholders::_1));
+    // }}}
+
+    // {{{ Node management
+    _localRpcMethods.emplace("managementInstallNode", std::bind(&IpcClient::installNode, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementUninstallNode", std::bind(&IpcClient::uninstallNode, this, std::placeholders::_1));
     // }}}
 
     // {{{ Updates
@@ -148,7 +154,7 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             error = true;
-            Ipc::Output::printCritical("Critical: Could not register RPC method managementDpkgPackageInstalled: " + result->structValue->at("faultString")->stringValue);
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementSleep: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -166,6 +172,21 @@ void IpcClient::onConnect()
         {
             error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementDpkgPackageInstalled: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementGetSystemInfo"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementGetSystemInfo: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -276,6 +297,56 @@ void IpcClient::onConnect()
         {
             error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSetUserPassword: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+        //}}}
+
+        //{{{ Node management
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementInstallNode"));
+        auto signatures = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
+        signatures->arrayValue->reserve(2);
+        parameters->push_back(signatures); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signatures->arrayValue->push_back(signature);
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray));
+        signatures->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementInstallNode: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementUninstallNode"));
+        signatures = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
+        signatures->arrayValue->reserve(2);
+        parameters->push_back(signatures); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        signatures->arrayValue->push_back(signature);
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray));
+        signatures->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementUninstallNode: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
         //}}}
@@ -752,6 +823,52 @@ Ipc::PVariable IpcClient::dpkgPackageInstalled(Ipc::PArray& parameters)
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
+Ipc::PVariable IpcClient::getSystemInfo(Ipc::PArray& parameters)
+{
+    try
+    {
+        auto info = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+
+        info->structValue->emplace("repositoryType", std::make_shared<Ipc::Variable>(GD::settings.repositoryType()));
+
+        {
+            if(GD::settings.system().empty())
+            {
+                std::string output;
+                auto commandStatus = BaseLib::ProcessManager::exec("lsb_release -i -s | tr '[:upper:]' '[:lower:]'", GD::bl->fileDescriptorManager.getMax(), output);
+                if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+                info->structValue->emplace("system", std::make_shared<Ipc::Variable>(BaseLib::HelperFunctions::trim(output)));
+            }
+            else info->structValue->emplace("system", std::make_shared<Ipc::Variable>(GD::settings.system()));
+        }
+
+        {
+            if(GD::settings.codename().empty())
+            {
+                std::string output;
+                auto commandStatus = BaseLib::ProcessManager::exec("lsb_release -c -s", GD::bl->fileDescriptorManager.getMax(), output);
+                if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+                info->structValue->emplace("codename", std::make_shared<Ipc::Variable>(BaseLib::HelperFunctions::trim(output)));
+            }
+            else info->structValue->emplace("codename", std::make_shared<Ipc::Variable>(GD::settings.codename()));
+        }
+
+        {
+            std::string output;
+            auto commandStatus = BaseLib::ProcessManager::exec("dpkg --print-architecture", GD::bl->fileDescriptorManager.getMax(), output);
+            if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+            info->structValue->emplace("architecture", std::make_shared<Ipc::Variable>(BaseLib::HelperFunctions::trim(output)));
+        }
+
+        return info;
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
 Ipc::PVariable IpcClient::serviceCommand(Ipc::PArray& parameters)
 {
     try
@@ -948,6 +1065,94 @@ Ipc::PVariable IpcClient::setUserPassword(Ipc::PArray& parameters)
         setRootReadOnly(true);
 
         return std::make_shared<Ipc::Variable>();
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
+// {{{ Node management
+Ipc::PVariable IpcClient::installNode(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString && parameters->at(0)->type != Ipc::VariableType::tArray) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String or Array.");
+
+        std::string nodeNames;
+        if(parameters->at(0)->type == Ipc::VariableType::tString)
+        {
+            BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+            nodeNames = "node-blue-node-" + parameters->at(0)->stringValue;
+        }
+        else
+        {
+            for(auto& entry : *parameters->at(0)->arrayValue)
+            {
+                BaseLib::HelperFunctions::stripNonAlphaNumeric(entry->stringValue);
+                nodeNames += "node-blue-node-" + entry->stringValue + " ";
+            }
+        }
+
+        std::string system;
+        {
+            if(GD::settings.system().empty())
+            {
+                std::string output;
+                auto commandStatus = BaseLib::ProcessManager::exec("lsb_release -i -s | tr '[:upper:]' '[:lower:]'", GD::bl->fileDescriptorManager.getMax(), output);
+                if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+                system = BaseLib::HelperFunctions::trim(output);
+            }
+            else system = GD::settings.system();
+        }
+
+        std::string codename;
+        {
+            if(GD::settings.codename().empty())
+            {
+                std::string output;
+                auto commandStatus = BaseLib::ProcessManager::exec("lsb_release -c -s", GD::bl->fileDescriptorManager.getMax(), output);
+                if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+                codename = BaseLib::HelperFunctions::trim(output);
+            }
+            else codename = GD::settings.codename();
+        }
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("echo \"deb https://apt.node-blue.com/" + GD::settings.repositoryType() + "/" + system + "/ " + codename + "/\" > /etc/apt/sources.list.d/node-blue-nodes.list; DEBIAN_FRONTEND=noninteractive apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=\"--force-overwrite\" -y install " + nodeNames));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString && parameters->at(0)->type != Ipc::VariableType::tArray) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String or Array.");
+
+        std::string nodeNames;
+        if(parameters->at(0)->type == Ipc::VariableType::tString)
+        {
+            BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+            nodeNames = "node-blue-node-" + parameters->at(0)->stringValue;
+        }
+        else
+        {
+            for(auto& entry : *parameters->at(0)->arrayValue)
+            {
+                BaseLib::HelperFunctions::stripNonAlphaNumeric(entry->stringValue);
+                nodeNames += "node-blue-node-" + entry->stringValue + " ";
+            }
+        }
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("dpkg --purge " + nodeNames));
     }
     catch (const std::exception& ex)
     {
