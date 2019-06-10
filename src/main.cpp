@@ -339,10 +339,6 @@ void startUp()
             sigprocmask(SIG_BLOCK, &set, nullptr);
         }
 
-        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
-
-        BaseLib::ProcessManager::startSignalHandler();
-
 		if(!std::freopen((GD::settings.logfilePath() + "homegear-management.log").c_str(), "a", stdout))
 		{
 			GD::out.printError("Error: Could not redirect output to log file.");
@@ -359,6 +355,10 @@ void startUp()
     	initGnuTls();
 
 		setLimits();
+
+        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
+
+        BaseLib::ProcessManager::startSignalHandler();
 
         if(GD::runAsUser.empty()) GD::runAsUser = GD::settings.runAsUser();
         if(GD::runAsGroup.empty()) GD::runAsGroup = GD::settings.runAsGroup();
