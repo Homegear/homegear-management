@@ -356,9 +356,8 @@ void startUp()
 
 		setLimits();
 
+        BaseLib::ProcessManager::startSignalHandler(); //Needs to be called before starting any threads
         GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
-
-        BaseLib::ProcessManager::startSignalHandler();
 
         if(GD::runAsUser.empty()) GD::runAsUser = GD::settings.runAsUser();
         if(GD::runAsGroup.empty()) GD::runAsGroup = GD::settings.runAsGroup();
