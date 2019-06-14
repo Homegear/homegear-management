@@ -75,6 +75,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     // {{{ Updates
     _localRpcMethods.emplace("managementAptUpdate", std::bind(&IpcClient::aptUpdate, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptUpgrade", std::bind(&IpcClient::aptUpgrade, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementAptUpgradeSpecific", std::bind(&IpcClient::aptUpgradeSpecific, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementHomegearUpdateAvailable", std::bind(&IpcClient::homegearUpdateAvailable, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementSystemUpdateAvailable", std::bind(&IpcClient::systemUpdateAvailable, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptFullUpgrade", std::bind(&IpcClient::aptFullUpgrade, this, std::placeholders::_1));
@@ -379,6 +380,21 @@ void IpcClient::onConnect()
         {
             error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpgrade: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpgradeSpecific"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpgradeSpecific: " + result->structValue->at("faultString")->stringValue);
         }
         if (error) return;
 
@@ -1207,6 +1223,25 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
         }
 
         return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str()));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+
+        auto packagesWhitelist = GD::settings.packagesWhitelist();
+        if(packagesWhitelist.find(parameters->at(0)->stringValue) == packagesWhitelist.end()) return Ipc::Variable::createError(-2, "This package is not in the list of allowed packages.");
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue));
     }
     catch (const std::exception& ex)
     {

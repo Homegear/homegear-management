@@ -100,6 +100,7 @@ private:
     // {{{ Updates
     Ipc::PVariable aptUpdate(Ipc::PArray& parameters);
     Ipc::PVariable aptUpgrade(Ipc::PArray& parameters);
+    Ipc::PVariable aptUpgradeSpecific(Ipc::PArray& parameters);
     Ipc::PVariable aptFullUpgrade(Ipc::PArray& parameters);
     Ipc::PVariable homegearUpdateAvailable(Ipc::PArray& parameters);
     Ipc::PVariable systemUpdateAvailable(Ipc::PArray& parameters);
