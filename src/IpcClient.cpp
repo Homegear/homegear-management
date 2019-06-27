@@ -1516,7 +1516,11 @@ Ipc::PVariable IpcClient::copyDeviceDescriptionFile(Ipc::PArray& parameters)
 
         setRootReadOnly(false);
 
-        auto result = std::make_shared<Ipc::Variable>(GD::bl->io.copyFile(parameters->at(0)->stringValue, "/etc/homegear/devices/" + std::to_string(parameters->at(1)->integerValue) + "/"+ BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/').second));
+        auto filepath = "/etc/homegear/devices/" + std::to_string(parameters->at(1)->integerValue) + "/"+ BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/').second;
+
+        auto result = std::make_shared<Ipc::Variable>(GD::bl->io.copyFile(parameters->at(0)->stringValue, filepath));
+
+        chmod(filepath.c_str(), S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
         setRootReadOnly(true);
 
