@@ -1206,7 +1206,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             packages << linePair.first << ' ';
         }
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y install --only-upgrade " + packages.str()));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str()));
     }
     catch (const std::exception& ex)
     {
