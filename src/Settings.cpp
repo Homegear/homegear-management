@@ -53,6 +53,7 @@ void Settings::reset()
     _maxCommandThreads = 30;
     _allowedServiceCommands.clear();
     _controllableServices.clear();
+	_packagesWhitelist.clear();
     _settingsWhitelist.clear();
 }
 
@@ -216,6 +217,16 @@ void Settings::load(std::string filename, std::string executablePath)
                         _controllableServices.emplace(element);
                     }
                     GD::bl->out.printDebug("Debug: controllableServices was set");
+                }
+                else if(name == "packageswhitelist")
+                {
+                    std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
+                    for(auto& element : elements)
+                    {
+                        GD::bl->hf.trim(element);
+                        _packagesWhitelist.emplace(element);
+                    }
+                    GD::bl->out.printDebug("Debug: packagesWhitelist was set");
                 }
                 else if(name == "settingswhitelist")
                 {
