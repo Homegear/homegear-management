@@ -1387,7 +1387,6 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
         setRootReadOnly(false);
 
         std::string output;
-        BaseLib::ProcessManager::exec("sed -i \"/^dir[ \\t]/c\\dir = \\/etc\\/homegear\\/ca\" /usr/lib/ssl/openssl.cnf", GD::bl->fileDescriptorManager.getMax(), output);
         BaseLib::ProcessManager::exec("mkdir /etc/homegear/ca /etc/homegear/ca/newcerts /etc/homegear/ca/certs /etc/homegear/ca/crl /etc/homegear/ca/private /etc/homegear/ca/requests", GD::bl->fileDescriptorManager.getMax(), output);
         BaseLib::ProcessManager::exec("touch /etc/homegear/ca/index.txt", GD::bl->fileDescriptorManager.getMax(), output);
         BaseLib::ProcessManager::exec("echo \"1000\" > /etc/homegear/ca/serial", GD::bl->fileDescriptorManager.getMax(), output);
@@ -1401,7 +1400,7 @@ Ipc::PVariable IpcClient::createCa(Ipc::PArray& parameters)
         uuid.append(BaseLib::HelperFunctions::getHexString(BaseLib::HelperFunctions::getRandomNumber(-2147483648, 2147483647), 8));
         uuid.append(BaseLib::HelperFunctions::getHexString(BaseLib::HelperFunctions::getRandomNumber(0, 65535), 4));
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca && openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && chmod 400 /etc/homegear/ca/private/cakey.pem && chown root:root /etc/homegear/ca/private/cakey.pem && openssl req -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 100000 -set_serial 0 -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=Homegear CA " + uuid + "\""));
+        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca && openssl genrsa -out /etc/homegear/ca/private/cakey.pem 4096 && chmod 400 /etc/homegear/ca/private/cakey.pem && chown root:root /etc/homegear/ca/private/cakey.pem && openssl req -config /etc/homegear/openssl.cnf -new -x509 -key /etc/homegear/ca/private/cakey.pem -out /etc/homegear/ca/cacert.pem -days 100000 -set_serial 0 -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=Homegear CA " + uuid + "\""));
     }
     catch (const std::exception& ex)
     {
@@ -1440,7 +1439,7 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
         metadata->structValue->emplace("certPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/certs/" + filename + ".crt"));
         metadata->structValue->emplace("keyPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/private/" + filename + ".key"));
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr", metadata));
+        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -config /etc/homegear/openssl.cnf -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -config /etc/homegear/openssl.cnf -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr", metadata));
     }
     catch (const std::exception& ex)
     {
