@@ -75,6 +75,7 @@ private:
     void executeCommand(PCommandInfo commandInfo);
 
     void setRootReadOnly(bool readOnly);
+    bool isAptRunning();
 
     // {{{ RPC methods
     Ipc::PVariable dpkgPackageInstalled(Ipc::PArray& parameters);

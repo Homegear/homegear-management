@@ -33,7 +33,7 @@
 #include <homegear-base/Managers/ProcessManager.h>
 
 #include <sys/stat.h>
-#include <sys/file.h>
+#include <fcntl.h>
 
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
@@ -673,6 +673,58 @@ void IpcClient::setRootReadOnly(bool readOnly)
     }
 }
 
+bool IpcClient::isAptRunning()
+{
+    try
+    {
+        setRootReadOnly(false);
+        auto lockFd1 = open("/var/lib/dpkg/lock", O_RDONLY | O_CREAT, 0640);
+        auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDONLY | O_CREAT, 0640);
+
+        if(lockFd1 == -1 || lockFd2 == -1)
+        {
+            close(lockFd1);
+            close(lockFd2);
+            setRootReadOnly(true);
+            GD::out.printError("Error: Could not open dpkg lock file: " + std::string(strerror(errno)));
+            return true;
+        }
+
+        struct flock lock1{};
+        struct flock lock2{};
+        auto result1 = fcntl(lockFd1, F_GETLK, &lock1);
+        if(result1 == -1)
+        {
+            close(lockFd1);
+            close(lockFd2);
+            setRootReadOnly(true);
+            GD::out.printError("Error: Could not call fcntl on dpkg lock file: " + std::string(strerror(errno)));
+            return true;
+        }
+        auto result2 = fcntl(lockFd2, F_GETLK, &lock2);
+        if(result2 == -1)
+        {
+            close(lockFd1);
+            close(lockFd2);
+            setRootReadOnly(true);
+            GD::out.printError("Error: Could not call fcntl on dpkg lock file (2): " + std::string(strerror(errno)));
+            return true;
+        }
+
+        close(lockFd1);
+        close(lockFd2);
+        setRootReadOnly(true);
+
+        return lock1.l_type == F_WRLCK || lock2.l_type == F_WRLCK;
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    setRootReadOnly(true);
+    return true;
+}
+
 int32_t IpcClient::startCommandThread(std::string command, Ipc::PVariable metadata)
 {
     try
@@ -1202,21 +1254,13 @@ Ipc::PVariable IpcClient::aptRunning(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-        auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0640);
-        auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0640);
-
-        auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
-        auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
-
-        close(lockFd1);
-        close(lockFd2);
-
-        return std::make_shared<Ipc::Variable>(result1 == -1 || result2 == -1);
+        return std::make_shared<Ipc::Variable>(isAptRunning());
     }
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
+    setRootReadOnly(true);
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1226,18 +1270,7 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-        {
-            auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
-            auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
-
-            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
-            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
-
-            close(lockFd1);
-            close(lockFd2);
-
-            if(result1 == -1 || result2 == -1)  return Ipc::Variable::createError(1, "apt is already being executed.");
-        }
+        if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
         return std::make_shared<Ipc::Variable>(startCommandThread("apt update"));
     }
@@ -1255,18 +1288,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
         if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
         if(parameters->at(0)->type != Ipc::VariableType::tInteger && parameters->at(0)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter is not of type Integer.");
 
-        {
-            auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
-            auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
-
-            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
-            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
-
-            close(lockFd1);
-            close(lockFd2);
-
-            if(result1 == -1 || result2 == -1)  return Ipc::Variable::createError(1, "apt is already being executed.");
-        }
+        if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
         std::string output;
         std::ostringstream packages;
@@ -1308,18 +1330,7 @@ Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
         auto packagesWhitelist = GD::settings.packagesWhitelist();
         if(packagesWhitelist.find(parameters->at(0)->stringValue) == packagesWhitelist.end()) return Ipc::Variable::createError(-2, "This package is not in the list of allowed packages.");
 
-        {
-            auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
-            auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
-
-            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
-            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
-
-            close(lockFd1);
-            close(lockFd2);
-
-            if(result1 == -1 || result2 == -1)  return Ipc::Variable::createError(1, "apt is already being executed.");
-        }
+        if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
         return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1)&)&"));
     }
@@ -1336,18 +1347,7 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-        {
-            auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
-            auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
-
-            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
-            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
-
-            close(lockFd1);
-            close(lockFd2);
-
-            if(result1 == -1 || result2 == -1)  return Ipc::Variable::createError(1, "apt is already being executed.");
-        }
+        if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
         return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1)&)&"));
     }
