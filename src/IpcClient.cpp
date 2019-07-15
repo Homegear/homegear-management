@@ -33,6 +33,7 @@
 #include <homegear-base/Managers/ProcessManager.h>
 
 #include <sys/stat.h>
+#include <sys/file.h>
 
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
@@ -73,6 +74,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     // }}}
 
     // {{{ Updates
+    _localRpcMethods.emplace("managementAptRunning", std::bind(&IpcClient::aptRunning, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptUpdate", std::bind(&IpcClient::aptUpdate, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptUpgrade", std::bind(&IpcClient::aptUpgrade, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptUpgradeSpecific", std::bind(&IpcClient::aptUpgradeSpecific, this, std::placeholders::_1));
@@ -353,6 +355,21 @@ void IpcClient::onConnect()
         //}}}
 
         //{{{ Updates
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptRunning"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            error = true;
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptRunning: " + result->structValue->at("faultString")->stringValue);
+        }
+        if (error) return;
+
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpdate"));
@@ -1179,11 +1196,48 @@ Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray& parameters)
 // }}}
 
 // {{{ Updates
+Ipc::PVariable IpcClient::aptRunning(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
+        auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
+
+        auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
+        auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+
+        close(lockFd1);
+        close(lockFd2);
+
+        return std::make_shared<Ipc::Variable>(result1 == -1 || result2 == -1);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
 Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
 {
     try
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        {
+            auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
+            auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
+
+            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
+            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+
+            close(lockFd1);
+            close(lockFd2);
+
+            if(result1 == -1 || result2 == -1)  return Ipc::Variable::createError(1, "apt is already being executed.");
+        }
 
         return std::make_shared<Ipc::Variable>(startCommandThread("apt update"));
     }
@@ -1200,6 +1254,19 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
     {
         if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
         if(parameters->at(0)->type != Ipc::VariableType::tInteger && parameters->at(0)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter is not of type Integer.");
+
+        {
+            auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
+            auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
+
+            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
+            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+
+            close(lockFd1);
+            close(lockFd2);
+
+            if(result1 == -1 || result2 == -1)  return Ipc::Variable::createError(1, "apt is already being executed.");
+        }
 
         std::string output;
         std::ostringstream packages;
@@ -1222,7 +1289,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             packages << linePair.first << ' ';
         }
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str()));
+        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1)&)&"));
     }
     catch (const std::exception& ex)
     {
@@ -1241,7 +1308,20 @@ Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
         auto packagesWhitelist = GD::settings.packagesWhitelist();
         if(packagesWhitelist.find(parameters->at(0)->stringValue) == packagesWhitelist.end()) return Ipc::Variable::createError(-2, "This package is not in the list of allowed packages.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue));
+        {
+            auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
+            auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
+
+            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
+            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+
+            close(lockFd1);
+            close(lockFd2);
+
+            if(result1 == -1 || result2 == -1)  return Ipc::Variable::createError(1, "apt is already being executed.");
+        }
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1)&)&"));
     }
     catch (const std::exception& ex)
     {
@@ -1256,7 +1336,20 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade"));
+        {
+            auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
+            auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
+
+            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
+            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+
+            close(lockFd1);
+            close(lockFd2);
+
+            if(result1 == -1 || result2 == -1)  return Ipc::Variable::createError(1, "apt is already being executed.");
+        }
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1)&)&"));
     }
     catch (const std::exception& ex)
     {

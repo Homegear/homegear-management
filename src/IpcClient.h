@@ -98,6 +98,7 @@ private:
     // }}}
 
     // {{{ Updates
+    Ipc::PVariable aptRunning(Ipc::PArray& parameters);
     Ipc::PVariable aptUpdate(Ipc::PArray& parameters);
     Ipc::PVariable aptUpgrade(Ipc::PArray& parameters);
     Ipc::PVariable aptUpgradeSpecific(Ipc::PArray& parameters);
