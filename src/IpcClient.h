@@ -75,9 +75,11 @@ private:
     void executeCommand(PCommandInfo commandInfo);
 
     void setRootReadOnly(bool readOnly);
+    bool isAptRunning();
 
     // {{{ RPC methods
     Ipc::PVariable dpkgPackageInstalled(Ipc::PArray& parameters);
+    Ipc::PVariable getSystemInfo(Ipc::PArray& parameters);
     Ipc::PVariable getCommandStatus(Ipc::PArray& parameters);
     Ipc::PVariable sleep(Ipc::PArray& parameters);
     Ipc::PVariable getConfigurationEntry(Ipc::PArray& parameters);
@@ -91,9 +93,16 @@ private:
     Ipc::PVariable setUserPassword(Ipc::PArray& parameters);
     // }}}
 
+    // {{{ Node management
+    Ipc::PVariable installNode(Ipc::PArray& parameters);
+    Ipc::PVariable uninstallNode(Ipc::PArray& parameters);
+    // }}}
+
     // {{{ Updates
+    Ipc::PVariable aptRunning(Ipc::PArray& parameters);
     Ipc::PVariable aptUpdate(Ipc::PArray& parameters);
     Ipc::PVariable aptUpgrade(Ipc::PArray& parameters);
+    Ipc::PVariable aptUpgradeSpecific(Ipc::PArray& parameters);
     Ipc::PVariable aptFullUpgrade(Ipc::PArray& parameters);
     Ipc::PVariable homegearUpdateAvailable(Ipc::PArray& parameters);
     Ipc::PVariable systemUpdateAvailable(Ipc::PArray& parameters);

@@ -46,10 +46,14 @@ void Settings::reset()
 	_workingDirectory = _executablePath;
 	_logfilePath = "/var/log/homegear/";
 	_homegearDataPath = "/var/lib/homegear/";
+	_repositoryType = "stable";
+	_system = "";
+	_codename = "";
 	_secureMemorySize = 65536;
     _maxCommandThreads = 30;
     _allowedServiceCommands.clear();
     _controllableServices.clear();
+	_packagesWhitelist.clear();
     _settingsWhitelist.clear();
 }
 
@@ -160,6 +164,22 @@ void Settings::load(std::string filename, std::string executablePath)
                     if(_homegearDataPath.back() != '/') _homegearDataPath.push_back('/');
                     GD::bl->out.printDebug("Debug: homegearDataPath set to " + _homegearDataPath);
                 }
+                else if(name == "repositorytype")
+                {
+                    _repositoryType = BaseLib::HelperFunctions::toLower(value);
+                    GD::bl->out.printDebug("Debug: repositoryType set to " + _repositoryType);
+                }
+                else if(name == "system")
+                {
+                    _system = BaseLib::HelperFunctions::toLower(value);
+                    if(!_system.empty()) _system.at(0) = std::toupper(_system.at(0));
+                    GD::bl->out.printDebug("Debug: system set to " + _repositoryType);
+                }
+                else if(name == "codename")
+                {
+                    _codename = BaseLib::HelperFunctions::toLower(value);
+                    GD::bl->out.printDebug("Debug: codename set to " + _repositoryType);
+                }
                 else if(name == "rootisreadonly")
                 {
                     _rootIsReadOnly = (value == "true");
@@ -198,6 +218,16 @@ void Settings::load(std::string filename, std::string executablePath)
                     }
                     GD::bl->out.printDebug("Debug: controllableServices was set");
                 }
+                else if(name == "packageswhitelist")
+                {
+                    std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
+                    for(auto& element : elements)
+                    {
+                        GD::bl->hf.trim(element);
+                        _packagesWhitelist.emplace(element);
+                    }
+                    GD::bl->out.printDebug("Debug: packagesWhitelist was set");
+                }
                 else if(name == "settingswhitelist")
                 {
                     std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
@@ -222,13 +252,5 @@ void Settings::load(std::string filename, std::string executablePath)
 	catch(const std::exception& ex)
     {
 		GD::bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(const BaseLib::Exception& ex)
-    {
-    	GD::bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-    	GD::bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
 }
