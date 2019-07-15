@@ -1202,11 +1202,11 @@ Ipc::PVariable IpcClient::aptRunning(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-        auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
-        auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
+        auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0640);
+        auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0640);
 
-        auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
-        auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+        auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
+        auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
 
         close(lockFd1);
         close(lockFd2);
@@ -1230,8 +1230,8 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
             auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
             auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
 
-            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
-            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
+            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
 
             close(lockFd1);
             close(lockFd2);
@@ -1259,8 +1259,8 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
             auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
 
-            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
-            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
+            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
 
             close(lockFd1);
             close(lockFd2);
@@ -1312,8 +1312,8 @@ Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
             auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
             auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
 
-            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
-            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
+            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
 
             close(lockFd1);
             close(lockFd2);
@@ -1340,8 +1340,8 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
             auto lockFd1 = open("/var/lib/dpkg/lock", O_RDWR | O_CREAT, 0666);
             auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDWR | O_CREAT, 0666);
 
-            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB | LOCK_UN);
-            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB | LOCK_UN);
+            auto result1 = flock(lockFd1, LOCK_EX | LOCK_NB);
+            auto result2 = flock(lockFd2, LOCK_EX | LOCK_NB);
 
             close(lockFd1);
             close(lockFd2);
