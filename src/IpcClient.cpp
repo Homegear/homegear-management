@@ -677,7 +677,12 @@ bool IpcClient::isAptRunning()
 {
     try
     {
+        std::string output;
+        auto commandStatus = BaseLib::ProcessManager::exec("pgrep apt-get", GD::bl->fileDescriptorManager.getMax(), output);
+        if(commandStatus == 0) return true;
+
         setRootReadOnly(false);
+
         auto lockFd1 = open("/var/lib/dpkg/lock", O_RDONLY | O_CREAT, 0640);
         auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDONLY | O_CREAT, 0640);
 
