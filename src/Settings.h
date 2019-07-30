@@ -52,9 +52,13 @@ public:
     std::string homegearDataPath() { return _homegearDataPath; }
     bool rootIsReadOnly() { return _rootIsReadOnly; }
 	uint32_t secureMemorySize() { return _secureMemorySize; }
+	std::string repositoryType() { return _repositoryType; }
+    std::string system() { return _system; }
+    std::string codename() { return _codename; }
     int32_t maxCommandThreads() { return _maxCommandThreads; }
     std::unordered_set<std::string> allowedServiceCommands() { return _allowedServiceCommands; }
     std::unordered_set<std::string> controllableServices() { return _controllableServices; }
+	std::unordered_set<std::string> packagesWhitelist() { return _packagesWhitelist; }
 	std::unordered_map<std::string, std::unordered_set<std::string>>& settingsWhitelist() { return _settingsWhitelist; }
 private:
 	std::string _executablePath;
@@ -70,11 +74,15 @@ private:
 	std::string _workingDirectory;
 	std::string _logfilePath;
 	std::string _homegearDataPath;
+	std::string _system;
+    std::string _codename;
     bool _rootIsReadOnly = false;
 	uint32_t _secureMemorySize = 65536;
+    std::string _repositoryType;
     int32_t _maxCommandThreads = 30;
     std::unordered_set<std::string> _allowedServiceCommands;
     std::unordered_set<std::string> _controllableServices;
+    std::unordered_set<std::string> _packagesWhitelist;
     std::unordered_map<std::string, std::unordered_set<std::string>> _settingsWhitelist;
 
 	void reset();
