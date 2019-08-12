@@ -131,15 +131,17 @@ private:
          *             "ipv4": {
          *                 type: "static", // or type: "dhcp"
          *                 address: "192.168.178.5",
-         *                 subnet: "255.255.255.0"
+         *                 netmask: "255.255.255.0",
+         *                 gateway: "192.168.178.1"
          *             },
          *             "ipv6": {
          *                 type: "auto", // or type: "static"
          *                 address: "fdab:1::5",
-         *                 subnet: "64"
-         *             },
-         *             "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
-         *         }
+         *                 netmask: "64",
+         *                 gateway: "fdab:1::1"
+         *             }
+         *         },
+         *         "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
          *     }
          *
          * @param parameters This method has no parameters.
@@ -155,15 +157,17 @@ private:
          *             "ipv4": {
          *                 type: "static", // or type: "dhcp"
          *                 address: "192.168.178.5",
-         *                 subnet: "255.255.255.0"
+         *                 netmask: "255.255.255.0",
+         *                 gateway: "192.168.178.1"
          *             },
          *             "ipv6": {
          *                 type: "auto", // or type: "static"
          *                 address: "fdab:1::5",
-         *                 subnet: "64"
-         *             },
-         *             "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
-         *         }
+         *                 netmask: "64",
+         *                 gateway: "fdab:1::1"
+         *             }
+         *         },
+         *         "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
          *     }
          *
          * @param parameters The new network configuration as a Struct.

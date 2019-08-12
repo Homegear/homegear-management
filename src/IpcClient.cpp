@@ -1265,7 +1265,6 @@ Ipc::PVariable IpcClient::aptRunning(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    setRootReadOnly(true);
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1601,9 +1600,136 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
+        auto config = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+
+        {
+            auto interfacesContent = BaseLib::Io::getFileContent("/etc/network/interfaces");
+            auto lines = BaseLib::HelperFunctions::splitAll(interfacesContent, '\n');
+
+            auto currentEntry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+
+            bool parse = false;
+            for(auto& line : lines)
+            {
+                BaseLib::HelperFunctions::trim(line);
+                if(line.compare(0, sizeof("#{{{ homegear-management"), "#{{{ homegear-management") == 0)
+                {
+                    parse = true;
+                    continue;
+                }
+                else if(line.compare(0, sizeof("#}}} homegear-management"), "#}}} homegear-management") == 0)
+                {
+                    parse = false;
+                    continue;
+                }
+
+                if(parse)
+                {
+                    auto lineParts = BaseLib::HelperFunctions::splitFirst(line, ' ');
+                    BaseLib::HelperFunctions::trim(lineParts.first);
+                    BaseLib::HelperFunctions::trim(lineParts.second);
+                    if(lineParts.first == "iface")
+                    {
+                        auto ifaceParts = BaseLib::HelperFunctions::splitAll(lineParts.second, ' ');
+                        if(ifaceParts.size() < 3) continue;
+                        auto configIterator = config->structValue->find(ifaceParts.at(0));
+                        if(configIterator == config->structValue->end())
+                        {
+                            currentEntry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+                            auto result = config->structValue->emplace(ifaceParts.at(0), currentEntry);
+                            if(!result.second) continue;
+                        }
+                        else currentEntry = configIterator->second;
+
+                        std::string ipType;
+                        if(ifaceParts.at(1) == "inet") ipType = "ipv4";
+                        else if(ifaceParts.at(1) == "inet6") ipType = "ipv6";
+                        else
+                        {
+                            currentEntry->structValue->clear();
+                            config->structValue->erase(ifaceParts.at(0));
+                            continue;
+                        }
+
+                        auto ipTypeIterator = currentEntry->structValue->find(ipType);
+                        if(ipTypeIterator == currentEntry->structValue->end())
+                        {
+                            auto ipTypeEntry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+                            auto result = currentEntry->structValue->emplace(ipType, ipTypeEntry);
+                            if(!result.second)
+                            {
+                                currentEntry->structValue->clear();
+                                config->structValue->erase(ifaceParts.at(0));
+                                continue;
+                            }
+                            currentEntry = ipTypeEntry;
+                        }
+                        else currentEntry = ipTypeIterator->second;
+
+                        currentEntry->structValue->emplace("type", std::make_shared<Ipc::Variable>(ifaceParts.at(2)));
+                    }
+                    else if(currentEntry->structValue->empty()) continue;
+                    else if(lineParts.first == "address") currentEntry->structValue->emplace("address", std::make_shared<Ipc::Variable>(lineParts.second));
+                    else if(lineParts.first == "netmask") currentEntry->structValue->emplace("netmask", std::make_shared<Ipc::Variable>(lineParts.second));
+                    else if(lineParts.first == "gateway") currentEntry->structValue->emplace("gateway", std::make_shared<Ipc::Variable>(lineParts.second));
+                    else
+                    {
+                        auto additionalEntries = currentEntry->structValue->find("additionalEntries");
+                        if(additionalEntries == currentEntry->structValue->end())
+                        {
+                            auto result = currentEntry->structValue->emplace("additionalEntries", std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray));
+                            if(!result.second) continue;
+                            additionalEntries = result.first;
+                        }
+
+                        additionalEntries->second->arrayValue->push_back(std::make_shared<Ipc::Variable>(line));
+                    }
+                }
+            }
+        }
+
+        {
+            auto resolvContent = BaseLib::Io::getFileContent("/etc/resolvconf/resolv.conf.d/head");
+            auto lines = BaseLib::HelperFunctions::splitAll(resolvContent, '\n');
 
 
+            bool parse = false;
+            for(auto& line : lines)
+            {
+                BaseLib::HelperFunctions::trim(line);
+                if(line.compare(0, sizeof("#{{{ homegear-management"), "#{{{ homegear-management") == 0)
+                {
+                    parse = true;
+                    continue;
+                }
+                else if(line.compare(0, sizeof("#}}} homegear-management"), "#}}} homegear-management") == 0)
+                {
+                    parse = false;
+                    continue;
+                }
 
+                if(parse)
+                {
+                    auto lineParts = BaseLib::HelperFunctions::splitFirst(line, ' ');
+                    BaseLib::HelperFunctions::trim(lineParts.first);
+                    BaseLib::HelperFunctions::trim(lineParts.second);
+                    if(lineParts.first == "nameserver")
+                    {
+                        auto configIterator = config->structValue->find("dns");
+                        if(configIterator == config->structValue->end())
+                        {
+                            auto result = config->structValue->emplace("dns", std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray));
+                            if(!result.second) continue;
+                            configIterator = result.first;
+                        }
+
+                        configIterator->second->arrayValue->push_back(std::make_shared<Ipc::Variable>(lineParts.second));
+                    }
+                }
+            }
+        }
+        
+        return config;
     }
     catch (const std::exception& ex)
     {
