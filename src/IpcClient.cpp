@@ -1607,17 +1607,19 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
             auto lines = BaseLib::HelperFunctions::splitAll(interfacesContent, '\n');
 
             auto currentEntry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+            std::string currentIpType;
+            std::string currentAssignmentType;
 
             bool parse = false;
             for(auto& line : lines)
             {
                 BaseLib::HelperFunctions::trim(line);
-                if(line.compare(0, sizeof("#{{{ homegear-management"), "#{{{ homegear-management") == 0)
+                if(line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0)
                 {
                     parse = true;
                     continue;
                 }
-                else if(line.compare(0, sizeof("#}}} homegear-management"), "#}}} homegear-management") == 0)
+                else if(line.compare(0, sizeof("#}}} homegear-management") - 1, "#}}} homegear-management") == 0)
                 {
                     parse = false;
                     continue;
@@ -1641,9 +1643,8 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
                         }
                         else currentEntry = configIterator->second;
 
-                        std::string ipType;
-                        if(ifaceParts.at(1) == "inet") ipType = "ipv4";
-                        else if(ifaceParts.at(1) == "inet6") ipType = "ipv6";
+                        if(ifaceParts.at(1) == "inet") currentIpType = "ipv4";
+                        else if(ifaceParts.at(1) == "inet6") currentIpType = "ipv6";
                         else
                         {
                             currentEntry->structValue->clear();
@@ -1651,11 +1652,11 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
                             continue;
                         }
 
-                        auto ipTypeIterator = currentEntry->structValue->find(ipType);
+                        auto ipTypeIterator = currentEntry->structValue->find(currentIpType);
                         if(ipTypeIterator == currentEntry->structValue->end())
                         {
                             auto ipTypeEntry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
-                            auto result = currentEntry->structValue->emplace(ipType, ipTypeEntry);
+                            auto result = currentEntry->structValue->emplace(currentIpType, ipTypeEntry);
                             if(!result.second)
                             {
                                 currentEntry->structValue->clear();
@@ -1666,12 +1667,23 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
                         }
                         else currentEntry = ipTypeIterator->second;
 
-                        currentEntry->structValue->emplace("type", std::make_shared<Ipc::Variable>(ifaceParts.at(2)));
+                        currentAssignmentType = ifaceParts.at(2);
+
+                        currentEntry->structValue->emplace("type", std::make_shared<Ipc::Variable>(currentAssignmentType));
                     }
                     else if(currentEntry->structValue->empty()) continue;
                     else if(lineParts.first == "address") currentEntry->structValue->emplace("address", std::make_shared<Ipc::Variable>(lineParts.second));
                     else if(lineParts.first == "netmask") currentEntry->structValue->emplace("netmask", std::make_shared<Ipc::Variable>(lineParts.second));
                     else if(lineParts.first == "gateway") currentEntry->structValue->emplace("gateway", std::make_shared<Ipc::Variable>(lineParts.second));
+                    else if(currentIpType == "ipv6" && currentAssignmentType == "auto" &&
+                        ((lineParts.first == "up" && lineParts.second.compare(0, sizeof("ip -6 addr add") - 1, "ip -6 addr add") == 0) ||
+                        (lineParts.first == "down" && lineParts.second.compare(0, sizeof("ip -6 addr del") - 1, "ip -6 addr del") == 0)))
+                    {
+                        auto elements = BaseLib::HelperFunctions::splitAll(lineParts.second, ' ');
+                        auto ipParts = BaseLib::HelperFunctions::splitLast(elements.at(4), '/');
+                        currentEntry->structValue->emplace("address", std::make_shared<Ipc::Variable>(ipParts.first));
+                        currentEntry->structValue->emplace("netmask", std::make_shared<Ipc::Variable>(ipParts.second));
+                    }
                     else
                     {
                         auto additionalEntries = currentEntry->structValue->find("additionalEntries");
@@ -1697,12 +1709,12 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
             for(auto& line : lines)
             {
                 BaseLib::HelperFunctions::trim(line);
-                if(line.compare(0, sizeof("#{{{ homegear-management"), "#{{{ homegear-management") == 0)
+                if(line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0)
                 {
                     parse = true;
                     continue;
                 }
-                else if(line.compare(0, sizeof("#}}} homegear-management"), "#}}} homegear-management") == 0)
+                else if(line.compare(0, sizeof("#}}} homegear-management") - 1, "#}}} homegear-management") == 0)
                 {
                     parse = false;
                     continue;
@@ -1745,18 +1757,146 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray& parameters)
         if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
         if(parameters->at(0)->type != Ipc::VariableType::tStruct) return Ipc::Variable::createError(-1, "Parameter 1 is not of type Struct.");
 
+        std::list<std::string> interfacesLines;
+        std::list<std::string> resolvLines;
+
+        for(auto& entry : *parameters->at(0)->structValue)
+        {
+            if(entry.first == "dns")
+            {
+                for(auto& nameserver : *entry.second->arrayValue)
+                {
+                    if(nameserver->stringValue.empty()) return Ipc::Variable::createError(-2, "At least one invalid nameserver entry.");
+                    resolvLines.push_back("nameserver " + nameserver->stringValue);
+                }
+            }
+            else
+            {
+                for(auto& ipType : *entry.second->structValue)
+                {
+                    if(ipType.first != "ipv4" && ipType.first != "ipv6") return Ipc::Variable::createError(-2, R"(At least one invalid IP type. Only "ipv4" and "ipv6" are supported.)");
+
+                    auto typeIterator = ipType.second->structValue->find("type");
+                    if(typeIterator == ipType.second->structValue->end() || typeIterator->second->stringValue.empty())
+                    {
+                        return Ipc::Variable::createError(-2, "At least one interface entry has no assignment type (static, auto, dhcp, ...).");
+                    }
+
+                    interfacesLines.emplace_back("iface " + entry.first + " " + (ipType.first == "ipv4" ? "inet" : "inet6") + " " + typeIterator->second->stringValue);
+
+                    auto addressIterator = ipType.second->structValue->find("address");
+                    auto netmaskIterator = ipType.second->structValue->find("netmask");
+                    auto gatewayIterator = ipType.second->structValue->find("gateway");
+
+                    if(addressIterator != ipType.second->structValue->end() &&
+                            netmaskIterator != ipType.second->structValue->end())
+                    {
+                        if(typeIterator->second->stringValue == "auto")
+                        {
+                            //Keep auto assigned IP address and add the manual one. No gateway entry.
+                            interfacesLines.emplace_back("    up ip -6 addr add " + addressIterator->second->stringValue + "/" + netmaskIterator->second->stringValue + " dev $IFACE label $IFACE:0");
+                            interfacesLines.emplace_back("    down ip -6 addr del " + addressIterator->second->stringValue + "/" + netmaskIterator->second->stringValue + " dev $IFACE label $IFACE:0");
+                        }
+                        else
+                        {
+                            interfacesLines.emplace_back("    address " + addressIterator->second->stringValue);
+                            interfacesLines.emplace_back("    netmask " + netmaskIterator->second->stringValue);
+                            if(gatewayIterator != ipType.second->structValue->end())
+                            {
+                                interfacesLines.push_back("    gateway " + gatewayIterator->second->stringValue);
+                            }
+                        }
+                    }
+                }
+
+                interfacesLines.emplace_back(""); //Empty line
+            }
+        }
+
+
+        std::list<std::string> interfacesLinesBefore;
+        std::list<std::string> interfacesLinesAfter;
+        std::list<std::string> resolvLinesBefore;
+        std::list<std::string> resolvLinesAfter;
+
+        {
+            auto interfacesContent = BaseLib::Io::getFileContent("/etc/network/interfaces");
+            auto lines = BaseLib::HelperFunctions::splitAll(interfacesContent, '\n');
+
+            bool before = true;
+            bool after = false;
+            for(auto& line : lines)
+            {
+                BaseLib::HelperFunctions::trim(line);
+
+                if(before) interfacesLinesBefore.emplace_back(line);
+
+                if(line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0)
+                {
+                    before = false;
+                }
+                else if(line.compare(0, sizeof("#}}} homegear-management") - 1, "#}}} homegear-management") == 0)
+                {
+                    after = true;
+                }
+
+                if(after) interfacesLinesAfter.emplace_back(line);
+            }
+        }
+
+        {
+            auto resolvContent = BaseLib::Io::getFileContent("/etc/resolvconf/resolv.conf.d/head");
+            auto lines = BaseLib::HelperFunctions::splitAll(resolvContent, '\n');
+
+            bool before = true;
+            bool after = false;
+            for(auto& line : lines)
+            {
+                BaseLib::HelperFunctions::trim(line);
+
+                if(before) resolvLinesBefore.emplace_back(line);
+
+                if(line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0)
+                {
+                    before = false;
+                }
+                else if(line.compare(0, sizeof("#}}} homegear-management") - 1, "#}}} homegear-management") == 0)
+                {
+                    after = true;
+                }
+
+                if(after) resolvLinesAfter.emplace_back(line);
+            }
+        }
+
         setRootReadOnly(false);
 
+        {
+            std::ostringstream interfacesStream;
+            for(auto& line : interfacesLinesBefore) interfacesStream << line << '\n';
+            for(auto& line : interfacesLines) interfacesStream << line << '\n';
+            for(auto& line : interfacesLinesAfter) interfacesStream << line << '\n';
 
+            BaseLib::Io::writeFile("/etc/network/interfaces", interfacesStream.str());
+        }
+
+        {
+            std::ostringstream resolvStream;
+            for(auto& line : resolvLinesBefore) resolvStream << line << '\n';
+            for(auto& line : resolvLines) resolvStream << line << '\n';
+            for(auto& line : resolvLinesAfter) resolvStream << line << '\n';
+
+            BaseLib::Io::writeFile("/etc/resolvconf/resolv.conf.d/head", resolvStream.str());
+        }
 
         setRootReadOnly(true);
-
-        
+        return std::make_shared<Ipc::Variable>();
     }
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
+    setRootReadOnly(true);
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 // }}}

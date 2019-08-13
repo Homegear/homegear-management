@@ -138,7 +138,8 @@ private:
          *                 type: "auto", // or type: "static"
          *                 address: "fdab:1::5",
          *                 netmask: "64",
-         *                 gateway: "fdab:1::1"
+         *                 gateway: "fdab:1::1",
+         *                 additionalEntries: ["line1", "line2", "line3"]
          *             }
          *         },
          *         "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
