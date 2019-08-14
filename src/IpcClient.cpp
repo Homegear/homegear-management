@@ -1055,6 +1055,8 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
                 auto settingIterator = entry.second.find(parameters->at(1)->stringValue);
                 if(settingIterator == entry.second.end()) return Ipc::Variable::createError(-2, "You are not allowed to write this setting.");
 
+                BaseLib::HelperFunctions::stringReplace(parameters->at(2)->stringValue, "\n", "\\n");
+
                 setRootReadOnly(false);
 
                 std::string output;
@@ -1684,18 +1686,6 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
                         currentEntry->structValue->emplace("address", std::make_shared<Ipc::Variable>(ipParts.first));
                         currentEntry->structValue->emplace("netmask", std::make_shared<Ipc::Variable>(ipParts.second));
                     }
-                    else
-                    {
-                        auto additionalEntries = currentEntry->structValue->find("additionalEntries");
-                        if(additionalEntries == currentEntry->structValue->end())
-                        {
-                            auto result = currentEntry->structValue->emplace("additionalEntries", std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray));
-                            if(!result.second) continue;
-                            additionalEntries = result.first;
-                        }
-
-                        additionalEntries->second->arrayValue->push_back(std::make_shared<Ipc::Variable>(line));
-                    }
                 }
             }
         }
@@ -1781,6 +1771,7 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray& parameters)
                     {
                         return Ipc::Variable::createError(-2, "At least one interface entry has no assignment type (static, auto, dhcp, ...).");
                     }
+                    BaseLib::HelperFunctions::stringReplace(typeIterator->second->stringValue, "\n", "\\n");
 
                     interfacesLines.emplace_back("iface " + entry.first + " " + (ipType.first == "ipv4" ? "inet" : "inet6") + " " + typeIterator->second->stringValue);
 
@@ -1791,6 +1782,13 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray& parameters)
                     if(addressIterator != ipType.second->structValue->end() &&
                             netmaskIterator != ipType.second->structValue->end())
                     {
+                        BaseLib::HelperFunctions::stringReplace(addressIterator->second->stringValue, "\n", "\\n");
+                        BaseLib::HelperFunctions::stringReplace(netmaskIterator->second->stringValue, "\n", "\\n");
+                        if(gatewayIterator != ipType.second->structValue->end())
+                        {
+                            BaseLib::HelperFunctions::stringReplace(gatewayIterator->second->stringValue, "\n", "\\n");
+                        }
+
                         if(typeIterator->second->stringValue == "auto")
                         {
                             //Keep auto assigned IP address and add the manual one. No gateway entry.
