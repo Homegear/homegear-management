@@ -81,6 +81,7 @@ void terminateProgram(int signalNumber)
     _disposing = true;
     GD::ipcClient->stop();
     GD::ipcClient.reset();
+    BaseLib::ProcessManager::stopSignalHandler(GD::bl->threadManager);
     GD::out.printMessage("(Shutdown) => Shutdown complete.");
     fclose(stdout);
     fclose(stderr);
