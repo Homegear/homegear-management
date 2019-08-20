@@ -138,8 +138,7 @@ private:
          *                 type: "auto", // or type: "static"
          *                 address: "fdab:1::5",
          *                 netmask: "64",
-         *                 gateway: "fdab:1::1",
-         *                 additionalEntries: ["line1", "line2", "line3"]
+         *                 gateway: "fdab:1::1"
          *             }
          *         },
          *         "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
@@ -151,7 +150,7 @@ private:
         Ipc::PVariable getNetworkConfiguration(Ipc::PArray& parameters);
 
         /**
-         * Sets the content of the file `/etc/network/interfaces`. You need to provice a Struct with the new configuration as parameter:
+         * Sets the content of the file `/etc/network/interfaces`. You need to provide a Struct with the new configuration as parameter:
          *
          *     {
          *         "eth0": {

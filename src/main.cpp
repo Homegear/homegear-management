@@ -57,7 +57,7 @@ std::thread _signalHandlerThread;
 
 void exitProgram(int exitCode)
 {
-    exit(exitCode);
+    _exit(exitCode);
 }
 
 void terminateProgram(int signalNumber)
@@ -89,7 +89,7 @@ void terminateProgram(int signalNumber)
     gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
     gcry_control(GCRYCTL_TERM_SECMEM);
     gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
-    exit(0);
+    _exit(0);
 }
 
 void signalHandlerThread()
