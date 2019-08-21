@@ -54,42 +54,53 @@ std::atomic_bool _startUpComplete;
 std::atomic_bool _shutdownQueued;
 bool _disposing = false;
 std::thread _signalHandlerThread;
+std::atomic_bool _stopMain{false};
 
 void exitProgram(int exitCode)
 {
-    _exit(exitCode);
+    exit(exitCode);
 }
 
 void terminateProgram(int signalNumber)
 {
-    _shuttingDownMutex.lock();
-    if(!_startUpComplete)
+    try
     {
-        GD::out.printMessage("Info: Startup is not complete yet. Queueing shutdown.");
-        _shutdownQueued = true;
+        _shuttingDownMutex.lock();
+        if(!_startUpComplete)
+        {
+            GD::out.printMessage("Info: Startup is not complete yet. Queueing shutdown.");
+            _shutdownQueued = true;
+            _shuttingDownMutex.unlock();
+            return;
+        }
+        if(GD::bl->shuttingDown)
+        {
+            _shuttingDownMutex.unlock();
+            return;
+        }
+        GD::out.printMessage("(Shutdown) => Stopping Homegear Management (Signal: " + std::to_string(signalNumber) + ")");
+        GD::bl->shuttingDown = true;
         _shuttingDownMutex.unlock();
+        _disposing = true;
+        GD::ipcClient->stop();
+        GD::ipcClient.reset();
+        BaseLib::ProcessManager::stopSignalHandler(GD::bl->threadManager);
+        GD::out.printMessage("(Shutdown) => Shutdown complete.");
+        fclose(stdout);
+        fclose(stderr);
+        gnutls_global_deinit();
+        gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
+        gcry_control(GCRYCTL_TERM_SECMEM);
+        gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
+
+        _stopMain = true;
         return;
     }
-    if(GD::bl->shuttingDown)
+    catch(const std::exception& ex)
     {
-        _shuttingDownMutex.unlock();
-        return;
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    GD::out.printMessage("(Shutdown) => Stopping Homegear Management (Signal: " + std::to_string(signalNumber) + ")");
-    GD::bl->shuttingDown = true;
-    _shuttingDownMutex.unlock();
-    _disposing = true;
-    GD::ipcClient->stop();
-    GD::ipcClient.reset();
-    BaseLib::ProcessManager::stopSignalHandler(GD::bl->threadManager);
-    GD::out.printMessage("(Shutdown) => Shutdown complete.");
-    fclose(stdout);
-    fclose(stderr);
-    gnutls_global_deinit();
-    gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
-    gcry_control(GCRYCTL_TERM_SECMEM);
-    gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
-    _exit(0);
+    _exit(1);
 }
 
 void signalHandlerThread()
@@ -120,6 +131,7 @@ void signalHandlerThread()
             if(signalNumber == SIGTERM || signalNumber == SIGINT)
             {
                 terminateProgram(signalNumber);
+                return;
             }
             else if(signalNumber == SIGHUP)
             {
@@ -148,6 +160,7 @@ void signalHandlerThread()
                 {
                     _shuttingDownMutex.unlock();
                     terminateProgram(SIGTERM);
+                    return;
                 }
                 _shuttingDownMutex.unlock();
                 GD::out.printInfo("Info: Reload complete.");
@@ -500,7 +513,7 @@ void startUp()
 			GD::out.printError("Error: A core file exists in Homegear Management's working directory (\"" + GD::settings.workingDirectory() + "core" + "\"). Please send this file to the Homegear team including information about your system (Linux distribution, CPU architecture), the Homegear Management version, the current log files and information what might've caused the error.");
 		}
 
-       	while(true) std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+       	while(!_stopMain) std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
 	catch(const std::exception& ex)
     {
@@ -636,6 +649,7 @@ int main(int argc, char* argv[])
 		if(_startAsDaemon) startDaemon();
     	startUp();
 
+        GD::bl->threadManager.join(_signalHandlerThread);
         return 0;
     }
     catch(const std::exception& ex)
@@ -644,5 +658,6 @@ int main(int argc, char* argv[])
 	}
     terminateProgram(SIGTERM);
 
+    GD::bl->threadManager.join(_signalHandlerThread);
     return 1;
 }
