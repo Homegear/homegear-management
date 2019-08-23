@@ -900,7 +900,7 @@ Ipc::PVariable IpcClient::dpkgPackageInstalled(Ipc::PArray& parameters)
         std::string output;
         auto commandStatus = BaseLib::ProcessManager::exec("dpkg-query -W -f '${db:Status-Abbrev}|${binary:Package}\\n' '*' 2>/dev/null | grep '^ii' | awk -F '|' '{print $2}' | cut -d ':' -f 1 | grep ^" + package + "$", GD::bl->fileDescriptorManager.getMax(), output);
 
-        if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+        if(commandStatus != 0) return std::make_shared<Ipc::Variable>(false);;
 
         BaseLib::HelperFunctions::trim(output);
 
