@@ -730,7 +730,7 @@ bool IpcClient::isAptRunning()
     return true;
 }
 
-int32_t IpcClient::startCommandThread(std::string command, Ipc::PVariable metadata)
+int32_t IpcClient::startCommandThread(std::string command, bool detach, Ipc::PVariable metadata)
 {
     try
     {
@@ -767,6 +767,7 @@ int32_t IpcClient::startCommandThread(std::string command, Ipc::PVariable metada
         auto commandInfo = std::make_shared<CommandInfo>();
         commandInfo->running = true;
         commandInfo->command = std::move(command);
+        commandInfo->detach = detach;
         commandInfo->metadata = metadata;
         _commandInfo.emplace(currentId, commandInfo);
         commandInfo->thread = std::thread(&IpcClient::executeCommand, this, commandInfo);
@@ -784,13 +785,25 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
 {
     try
     {
-        setRootReadOnly(false);
-
         std::string output;
-        auto commandStatus = BaseLib::ProcessManager::exec(commandInfo->command, GD::bl->fileDescriptorManager.getMax(), output);
-        std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
-        commandInfo->status = commandStatus;
-        commandInfo->output = std::move(output);
+        if(commandInfo->detach)
+        {
+            auto commandStatus = BaseLib::ProcessManager::exec(commandInfo->command, GD::bl->fileDescriptorManager.getMax());
+            std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
+            commandInfo->status = commandStatus ? 0 : -1;
+        }
+        else
+        {
+            setRootReadOnly(false);
+            auto commandStatus = BaseLib::ProcessManager::exec(commandInfo->command, GD::bl->fileDescriptorManager.getMax(), output);
+            setRootReadOnly(true);
+
+            {
+                std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
+                commandInfo->status = commandStatus;
+                commandInfo->output = std::move(output);
+            }
+        }
         commandInfo->endTime = BaseLib::HelperFunctions::getTime();
         GD::out.printInfo("Info: Output of command " + commandInfo->command + ":\n" + commandInfo->output);
     }
@@ -799,7 +812,6 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
         commandInfo->status = -1;
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    setRootReadOnly(true);
     commandInfo->running = false;
 }
 
@@ -1317,7 +1329,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             packages << linePair.first << ' ';
         }
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1)&)&"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1", true));
     }
     catch (const std::exception& ex)
     {
@@ -1338,7 +1350,7 @@ Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1)&)&"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1", true));
     }
     catch (const std::exception& ex)
     {
@@ -1355,7 +1367,7 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1)&)&"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1", true));
     }
     catch (const std::exception& ex)
     {
@@ -1436,7 +1448,7 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
         auto metadata = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
         metadata->structValue->emplace("filename", std::make_shared<Ipc::Variable>(file));
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("/var/lib/homegear/scripts/BackupHomegear.sh " + file, metadata));
+        return std::make_shared<Ipc::Variable>(startCommandThread("/var/lib/homegear/scripts/BackupHomegear.sh " + file, false, metadata));
     }
     catch (const std::exception& ex)
     {
@@ -1538,7 +1550,7 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
         metadata->structValue->emplace("certPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/certs/" + filename + ".crt"));
         metadata->structValue->emplace("keyPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/private/" + filename + ".key"));
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -config /etc/homegear/openssl.cnf -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -config /etc/homegear/openssl.cnf -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr", metadata));
+        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -config /etc/homegear/openssl.cnf -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -config /etc/homegear/openssl.cnf -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr", false, metadata));
     }
     catch (const std::exception& ex)
     {
