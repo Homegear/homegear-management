@@ -114,6 +114,10 @@ private:
     Ipc::PVariable restoreBackup(Ipc::PArray& parameters);
     // }}}
 
+    // {{{ System reset
+    Ipc::PVariable systemReset(Ipc::PArray& parameters);
+    // }}}
+
     // {{{ CA and gateways
     Ipc::PVariable caExists(Ipc::PArray& parameters);
     Ipc::PVariable createCa(Ipc::PArray& parameters);
