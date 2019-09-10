@@ -1290,7 +1290,7 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("apt update"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("apt-get update", true));
     }
     catch (const std::exception& ex)
     {

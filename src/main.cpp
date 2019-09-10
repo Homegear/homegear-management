@@ -656,8 +656,5 @@ int main(int argc, char* argv[])
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 	}
-    terminateProgram(SIGTERM);
-
-    GD::bl->threadManager.join(_signalHandlerThread);
-    return 1;
+    _exit(1);
 }
