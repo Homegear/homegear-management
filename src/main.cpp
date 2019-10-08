@@ -56,12 +56,7 @@ bool _disposing = false;
 std::thread _signalHandlerThread;
 std::atomic_bool _stopMain{false};
 
-void exitProgram(int exitCode)
-{
-    exit(exitCode);
-}
-
-void terminateProgram(int signalNumber)
+void terminateProgram(int signalNumber, bool force)
 {
     try
     {
@@ -94,6 +89,7 @@ void terminateProgram(int signalNumber)
         gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
 
         _stopMain = true;
+
         return;
     }
     catch(const std::exception& ex)
@@ -130,7 +126,7 @@ void signalHandlerThread()
             sigwait(&set, &signalNumber);
             if(signalNumber == SIGTERM || signalNumber == SIGINT)
             {
-                terminateProgram(signalNumber);
+                terminateProgram(signalNumber, false);
                 return;
             }
             else if(signalNumber == SIGHUP)
@@ -159,12 +155,13 @@ void signalHandlerThread()
                 if(_shutdownQueued)
                 {
                     _shuttingDownMutex.unlock();
-                    terminateProgram(SIGTERM);
+                    terminateProgram(SIGTERM, false);
                     return;
                 }
                 _shuttingDownMutex.unlock();
                 GD::out.printInfo("Info: Reload complete.");
             }
+            else if(signalNumber == SIGUSR1 && _stopMain) return;
             else
             {
                 if(!_disposing) GD::out.printCritical("Critical: Signal " + std::to_string(signalNumber) + " received. Stopping Homegear Management...");
@@ -298,11 +295,11 @@ void startDaemon()
 		pid = fork();
 		if(pid < 0)
 		{
-			exitProgram(1);
+			exit(1);
 		}
 		if(pid > 0)
 		{
-			exitProgram(0);
+			exit(0);
 		}
 
 		//Set process permission
@@ -312,7 +309,7 @@ void startDaemon()
 		sid = setsid();
 		if(sid < 0)
 		{
-			exitProgram(1);
+			exit(1);
 		}
 
 		close(STDIN_FILENO);
@@ -330,7 +327,8 @@ void startUp()
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");
-			exitProgram(1);
+			terminateProgram(SIGTERM, true);
+			return;
 		}
 
         {
@@ -402,7 +400,8 @@ void startUp()
 			if(GD::bl->userId == 0 || GD::bl->groupId == 0)
 			{
 				GD::out.printCritical("Could not drop privileges. User name or group name is not valid.");
-				exitProgram(1);
+				terminateProgram(SIGTERM, true);
+				return;
 			}
 			GD::out.printInfo("Info: Dropping privileges to user " + GD::runAsUser + " (" + std::to_string(GD::bl->userId) + ") and group " + GD::runAsGroup + " (" + std::to_string(GD::bl->groupId) + ")");
 
@@ -420,19 +419,22 @@ void startUp()
 			if(setgid(GD::bl->groupId) != 0)
 			{
 				GD::out.printCritical("Critical: Could not drop group privileges.");
-				exitProgram(1);
+                terminateProgram(SIGTERM, true);
+                return;
 			}
 
 			if(setgroups(supplementaryGroups.size(), supplementaryGroups.data()) != 0)
 			{
 				GD::out.printCritical("Critical: Could not set supplementary groups: " + std::string(strerror(errno)));
-				exitProgram(1);
+                terminateProgram(SIGTERM, true);
+                return;
 			}
 
 			if(setuid(GD::bl->userId) != 0)
 			{
 				GD::out.printCritical("Critical: Could not drop user privileges.");
-				exitProgram(1);
+                terminateProgram(SIGTERM, true);
+                return;
 			}
 
 			//Core dumps are disabled by setuid. Enable them again.
@@ -504,7 +506,7 @@ void startUp()
 		if(_shutdownQueued)
 		{
 			_shuttingDownMutex.unlock();
-			terminateProgram(SIGTERM);
+			terminateProgram(SIGTERM, false);
 		}
 		_shuttingDownMutex.unlock();
 
@@ -643,12 +645,13 @@ int main(int argc, char* argv[])
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");
-			exitProgram(1);
+			exit(1);
 		}
 
 		if(_startAsDaemon) startDaemon();
     	startUp();
 
+        kill(getpid(), SIGUSR1);
         GD::bl->threadManager.join(_signalHandlerThread);
         return 0;
     }
