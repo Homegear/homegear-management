@@ -764,14 +764,19 @@ int32_t IpcClient::startCommandThread(std::string command, bool detach, Ipc::PVa
 {
     try
     {
-        std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
-
         if(_disposing) return -1;
+
+        std::unordered_map<int32_t, PCommandInfo> commandInfoCopy;
+
+        {
+            std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
+            auto commandInfoCopy = _commandInfo;
+        }
 
         int32_t runningCommands = 0;
 
         std::list<int32_t> idsToErase;
-        for(auto& commandInfo : _commandInfo)
+        for(auto& commandInfo : commandInfoCopy)
         {
             if(!commandInfo.second->running)
             {
@@ -786,11 +791,6 @@ int32_t IpcClient::startCommandThread(std::string command, bool detach, Ipc::PVa
 
         if(runningCommands >= GD::settings.maxCommandThreads()) return -2;
 
-        for(auto idToErase : idsToErase)
-        {
-            _commandInfo.erase(idToErase);
-        }
-
         int32_t currentId = -1;
         while(currentId == -1 || currentId == -2) currentId = _currentCommandInfoId++;
 
@@ -799,8 +799,17 @@ int32_t IpcClient::startCommandThread(std::string command, bool detach, Ipc::PVa
         commandInfo->command = std::move(command);
         commandInfo->detach = detach;
         commandInfo->metadata = metadata;
-        _commandInfo.emplace(currentId, commandInfo);
         commandInfo->thread = std::thread(&IpcClient::executeCommand, this, commandInfo);
+
+        {
+            std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
+            for(auto idToErase : idsToErase)
+            {
+                _commandInfo.erase(idToErase);
+            }
+
+            _commandInfo.emplace(currentId, commandInfo);
+        }
 
         return currentId;
     }
@@ -818,6 +827,7 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
         std::string output;
         if(commandInfo->detach)
         {
+            setRootReadOnly(false);
             auto commandStatus = BaseLib::ProcessManager::exec(commandInfo->command, GD::bl->fileDescriptorManager.getMax());
             std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
             commandInfo->status = commandStatus ? 0 : -1;
