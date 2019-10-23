@@ -667,8 +667,8 @@ void IpcClient::onConnectError()
                 {
                     GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
                 }
-                BaseLib::ProcessManager::exec(R"((service homegear start&) &)", GD::bl->fileDescriptorManager.getMax(), output);
-                BaseLib::ProcessManager::exec(R"((service homegear-management restart&) &)", GD::bl->fileDescriptorManager.getMax(), output);
+                BaseLib::ProcessManager::exec(R"((service homegear start&) &)", GD::bl->fileDescriptorManager.getMax());
+                BaseLib::ProcessManager::exec(R"((service homegear-management restart&) &)", GD::bl->fileDescriptorManager.getMax());
             }
         }
     }
