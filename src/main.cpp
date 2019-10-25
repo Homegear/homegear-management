@@ -507,6 +507,7 @@ void startUp()
 		{
 			_shuttingDownMutex.unlock();
 			terminateProgram(SIGTERM, false);
+			return;
 		}
 		_shuttingDownMutex.unlock();
 
