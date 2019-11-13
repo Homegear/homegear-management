@@ -145,7 +145,7 @@ void IpcClient::lifetickThread()
                 if(_stopLifetickThread) return;
             }
 
-            auto result = invoke("lifetick", std::make_shared<Ipc::Array>());
+            auto result = invoke("lifetick", std::make_shared<Ipc::Array>(), 30000);
             if(!_stopLifetickThread && (result->errorStruct || !result->booleanValue))
             {
                 GD::out.printError("Error: Homegear lifetick failed.");
