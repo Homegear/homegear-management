@@ -137,6 +137,7 @@ void IpcClient::lifetickThread()
 {
     try
     {
+        bool lifetickFailed = false;
         while(!_stopLifetickThread)
         {
             for(int32_t i = 0; i < 600; i++)
@@ -148,15 +149,25 @@ void IpcClient::lifetickThread()
             auto result = invoke("lifetick", std::make_shared<Ipc::Array>(), 30000);
             if(!_stopLifetickThread && (result->errorStruct || !result->booleanValue))
             {
-                GD::out.printError("Error: Homegear lifetick failed.");
-                if(_homegearPid != 0)
+                if(!lifetickFailed)
                 {
-                    GD::out.printError("Error: Killing and restarting Homegear.");
-                    kill(_homegearPid, SIGKILL);
-                    BaseLib::ProcessManager::exec(R"((service homegear restart&) &)",
-                                                  GD::bl->fileDescriptorManager.getMax());
+                    GD::out.printError("Warning: Homegear lifetick failed.");
+                    lifetickFailed = true;
+                }
+                else
+                {
+                    GD::out.printError("Error: Homegear lifetick failed.");
+                    if (_homegearPid != 0)
+                    {
+                        GD::out.printError("Error: Killing and restarting Homegear.");
+                        kill(_homegearPid, SIGKILL);
+                        BaseLib::ProcessManager::exec(R"((service homegear restart&) &)",
+                                                      GD::bl->fileDescriptorManager.getMax());
+                        return;
+                    }
                 }
             }
+            else lifetickFailed = false;
         }
     }
     catch (const std::exception& ex)
