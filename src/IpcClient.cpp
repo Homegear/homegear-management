@@ -125,14 +125,50 @@ IpcClient::~IpcClient()
     {
         if(commandInfo.second->thread.joinable()) commandInfo.second->thread.join();
     }
+
+    if (_lifetickThread.joinable())
+    {
+        _stopLifetickThread = true;
+        _lifetickThread.join();
+    }
+}
+
+void IpcClient::lifetickThread()
+{
+    try
+    {
+        while(!_stopLifetickThread)
+        {
+            for(int32_t i = 0; i < 600; i++)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if(_stopLifetickThread) return;
+            }
+
+            auto result = invoke("lifetick", std::make_shared<Ipc::Array>());
+            if(!_stopLifetickThread && (result->errorStruct || !result->booleanValue))
+            {
+                GD::out.printError("Error: Homegear lifetick failed.");
+                if(_homegearPid != 0)
+                {
+                    GD::out.printError("Error: Killing and restarting Homegear.");
+                    kill(_homegearPid, SIGKILL);
+                    BaseLib::ProcessManager::exec(R"((service homegear restart&) &)",
+                                                  GD::bl->fileDescriptorManager.getMax());
+                }
+            }
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
 }
 
 void IpcClient::onConnect()
 {
     try
     {
-        bool error = false;
-
         Ipc::PArray parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
         parameters->push_back(std::make_shared<Ipc::Variable>("managementGetCommandStatus"));
@@ -143,10 +179,9 @@ void IpcClient::onConnect()
         Ipc::PVariable result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetCommandStatus: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -160,10 +195,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSleep: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -177,10 +211,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementDpkgPackageInstalled: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -192,10 +225,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetSystemInfo: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -210,10 +242,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetConfigurationEntry: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -228,10 +259,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementServiceCommand: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -243,10 +273,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementReboot: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -262,10 +291,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSetConfigurationEntry: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -283,10 +311,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementWriteCloudMaticConfig: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         //{{{ User management
         parameters = std::make_shared<Ipc::Array>();
@@ -302,10 +329,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSetUserPassword: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         //{{{ Node management
@@ -328,10 +354,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementInstallNode: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -352,10 +377,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementUninstallNode: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         //{{{ Updates
@@ -369,10 +393,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptRunning: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -384,10 +407,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpdate: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -399,10 +421,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpgrade: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -414,10 +435,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpgradeSpecific: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -429,10 +449,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptFullUpgrade: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -444,10 +463,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementHomegearUpdateAvailable: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -459,10 +477,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSystemUpdateAvailable: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         //{{{ Backups
@@ -476,10 +493,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateBackup: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -493,10 +509,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementRestoreBackup: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         //{{{ System reset
@@ -512,10 +527,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSystemReset: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         //{{{ CA and gateways
@@ -529,10 +543,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCaExists: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -544,10 +557,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateCa: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -561,10 +573,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateCert: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -578,10 +589,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementDeleteCert: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         // {{{ System configuration
@@ -595,10 +605,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetNetworkConfiguration: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -612,10 +621,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSetNetworkConfiguration: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         // }}}
 
         // {{{ Device description files
@@ -632,13 +640,50 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCopyDeviceDescriptionFile: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
+        // }}}
+
+        // {{{ Get Homegear's PID
+        result = invoke("getHomegearPid", std::make_shared<Ipc::Array>());
+        if(result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not get Homegear's PID: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+        _homegearPid = result->integerValue64;
+        GD::out.printInfo("Info: Homegear's process ID is: " + std::to_string(_homegearPid));
         // }}}
 
         GD::out.printInfo("Info: RPC methods successfully registered.");
+
+        GD::out.printInfo("Info: Starting lifetick thread...");
+        if(_lifetickThread.joinable())
+        {
+            _stopLifetickThread = true;
+            _lifetickThread.join();
+        }
+        _stopLifetickThread = false;
+        _lifetickThread = std::thread(&IpcClient::lifetickThread, this);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+}
+
+void IpcClient::onDisconnect()
+{
+    try
+    {
+        GD::out.printInfo("Info: Connection to Homegear closed.");
+        GD::out.printInfo("Info: Stopping lifetick thread...");
+        if (_lifetickThread.joinable())
+        {
+            _stopLifetickThread = true;
+            _lifetickThread.join();
+        }
     }
     catch (const std::exception& ex)
     {

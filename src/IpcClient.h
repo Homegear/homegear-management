@@ -47,6 +47,7 @@ public:
     ~IpcClient() override;
 private:
     void onConnect() override;
+    void onDisconnect() override;
     void onConnectError() override;
 
     class CommandInfo
@@ -71,6 +72,11 @@ private:
     std::unordered_map<int32_t, PCommandInfo> _commandInfo;
     std::mutex _readOnlyCountMutex;
     int32_t _readOnlyCount = 0;
+    std::atomic<int64_t> _homegearPid{0};
+    std::atomic_bool _stopLifetickThread{false};
+    std::thread _lifetickThread;
+
+    void lifetickThread();
 
     int32_t startCommandThread(std::string command, bool detach = false, Ipc::PVariable metadata = std::make_shared<Ipc::Variable>());
     void executeCommand(PCommandInfo commandInfo);
