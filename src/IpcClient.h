@@ -72,7 +72,7 @@ private:
     std::unordered_map<int32_t, PCommandInfo> _commandInfo;
     std::mutex _readOnlyCountMutex;
     int32_t _readOnlyCount = 0;
-    std::atomic<int64_t> _homegearPid{0};
+    std::atomic<int32_t> _homegearPid{0};
     std::atomic_bool _stopLifetickThread{false};
     std::thread _lifetickThread;
 
