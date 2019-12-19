@@ -1576,7 +1576,7 @@ Ipc::PVariable IpcClient::systemReset(Ipc::PArray& parameters)
 {
     try
     {
-        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh 2>&1", true));
     }
     catch (const std::exception& ex)
     {
