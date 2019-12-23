@@ -103,6 +103,7 @@ private:
     // {{{ Node management
     Ipc::PVariable installNode(Ipc::PArray& parameters);
     Ipc::PVariable uninstallNode(Ipc::PArray& parameters);
+    Ipc::PVariable getNodePackages(Ipc::PArray& parameters);
     // }}}
 
     // {{{ Updates

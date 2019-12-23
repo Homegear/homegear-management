@@ -71,6 +71,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     // {{{ Node management
     _localRpcMethods.emplace("managementInstallNode", std::bind(&IpcClient::installNode, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementUninstallNode", std::bind(&IpcClient::uninstallNode, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementGetNodePackages", std::bind(&IpcClient::getNodePackages, this, std::placeholders::_1));
     // }}}
 
     // {{{ Updates
@@ -389,6 +390,22 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             Ipc::Output::printCritical("Critical: Could not register RPC method managementUninstallNode: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementGetNodePackages"));
+        signatures = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
+        signatures->arrayValue->reserve(2);
+        parameters->push_back(signatures); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
+        signatures->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementGetNodePackages: " + result->structValue->at("faultString")->stringValue);
             return;
         }
         //}}}
@@ -1341,18 +1358,55 @@ Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray& parameters)
         if(parameters->at(0)->type == Ipc::VariableType::tString)
         {
             BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
-            nodeNames = "node-blue-node-" + parameters->at(0)->stringValue;
+            nodeNames = parameters->at(0)->stringValue.compare(0, 15, "node-blue-node-") == 0 ? parameters->at(0)->stringValue : "node-blue-node-" + parameters->at(0)->stringValue;
         }
         else
         {
             for(auto& entry : *parameters->at(0)->arrayValue)
             {
                 BaseLib::HelperFunctions::stripNonAlphaNumeric(entry->stringValue);
-                nodeNames += "node-blue-node-" + entry->stringValue + " ";
+                nodeNames += (entry->stringValue.compare(0, 15, "node-blue-node-") == 0 ? entry->stringValue : "node-blue-node-" + parameters->at(0)->stringValue) + " ";
             }
         }
 
         return std::make_shared<Ipc::Variable>(startCommandThread("dpkg --purge " + nodeNames));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::getNodePackages(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        Ipc::PVariable result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+
+        std::string output;
+        BaseLib::ProcessManager::exec(R"(apt list --installed 2>/dev/null | grep "^node-blue-node-" | cut -d "/" -f 1)", GD::bl->fileDescriptorManager.getMax(), output);
+        BaseLib::HelperFunctions::trim(output);
+        auto packages = BaseLib::HelperFunctions::splitAll(output, '\n');
+        for(auto& package : packages)
+        {
+            output.clear();
+            BaseLib::ProcessManager::exec("dpkg-query -L " + package + " 2>/dev/null | grep \".hni$\"", GD::bl->fileDescriptorManager.getMax(), output);
+            BaseLib::HelperFunctions::trim(output);
+            auto files = BaseLib::HelperFunctions::splitAll(output, '\n');
+            for(auto& file : files)
+            {
+                auto parts = BaseLib::HelperFunctions::splitAll(file, '/');
+                if(parts.size() < 2) continue;
+
+                auto id = parts.at(parts.size() - 2) + '/' + parts.back();
+                result->structValue->emplace(id, std::make_shared<Ipc::Variable>(package));
+            }
+        }
+
+        return result;
     }
     catch (const std::exception& ex)
     {
