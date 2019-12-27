@@ -108,7 +108,7 @@ void signalHandlerThread()
             if(sigwait(&set, &signalNumber) != 0)
             {
                 GD::out.printError("Error calling sigwait. Killing myself.");
-                raise(SIGKILL);
+                kill(getpid(), SIGKILL);
             }
             if(signalNumber == SIGTERM || signalNumber == SIGINT)
             {
@@ -138,7 +138,7 @@ void signalHandlerThread()
             {
                 GD::out.printCritical("Signal " + std::to_string(signalNumber) + " received.");
                 pthread_sigmask(SIG_SETMASK, &BaseLib::SharedObjects::defaultSignalMask, nullptr);
-                raise(signalNumber); //Raise same signal again using the default action.
+                kill(getpid(), signalNumber); //Raise same signal again using the default action.
             }
         }
         catch(const std::exception& ex)
