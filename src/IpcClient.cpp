@@ -71,6 +71,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     // {{{ Node management
     _localRpcMethods.emplace("managementInstallNode", std::bind(&IpcClient::installNode, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementUninstallNode", std::bind(&IpcClient::uninstallNode, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementGetNodePackages", std::bind(&IpcClient::getNodePackages, this, std::placeholders::_1));
     // }}}
 
     // {{{ Updates
@@ -86,6 +87,10 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     // {{{ Backups
     _localRpcMethods.emplace("managementCreateBackup", std::bind(&IpcClient::createBackup, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementRestoreBackup", std::bind(&IpcClient::restoreBackup, this, std::placeholders::_1));
+    // }}}
+
+    // {{{ System reset
+    _localRpcMethods.emplace("managementSystemReset", std::bind(&IpcClient::systemReset, this, std::placeholders::_1));
     // }}}
 
     // {{{ CA and gateways
@@ -121,14 +126,61 @@ IpcClient::~IpcClient()
     {
         if(commandInfo.second->thread.joinable()) commandInfo.second->thread.join();
     }
+
+    if (_lifetickThread.joinable())
+    {
+        _stopLifetickThread = true;
+        _lifetickThread.join();
+    }
+}
+
+void IpcClient::lifetickThread()
+{
+    try
+    {
+        bool lifetickFailed = false;
+        while(!_stopLifetickThread)
+        {
+            for(int32_t i = 0; i < 600; i++)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if(_stopLifetickThread) return;
+            }
+
+            auto result = invoke("lifetick", std::make_shared<Ipc::Array>(), 30000);
+            if(!_stopLifetickThread && (result->errorStruct || !result->booleanValue))
+            {
+                if(!lifetickFailed)
+                {
+                    GD::out.printError("Warning: Homegear lifetick failed.");
+                    lifetickFailed = true;
+                }
+                else
+                {
+                    GD::out.printError("Error: Homegear lifetick failed.");
+                    if (_homegearPid != 0)
+                    {
+                        GD::out.printError("Error: Killing and restarting Homegear.");
+                        kill(_homegearPid, SIGKILL);
+                        BaseLib::ProcessManager::exec(R"((service homegear restart&) &)",
+                                                      GD::bl->fileDescriptorManager.getMax());
+                        return;
+                    }
+                }
+            }
+            else lifetickFailed = false;
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
 }
 
 void IpcClient::onConnect()
 {
     try
     {
-        bool error = false;
-
         Ipc::PArray parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
         parameters->push_back(std::make_shared<Ipc::Variable>("managementGetCommandStatus"));
@@ -139,10 +191,9 @@ void IpcClient::onConnect()
         Ipc::PVariable result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetCommandStatus: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -156,10 +207,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSleep: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -173,10 +223,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementDpkgPackageInstalled: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -188,10 +237,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetSystemInfo: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -206,10 +254,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetConfigurationEntry: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -224,10 +271,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementServiceCommand: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -239,10 +285,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementReboot: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -258,10 +303,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSetConfigurationEntry: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -279,10 +323,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementWriteCloudMaticConfig: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         //{{{ User management
         parameters = std::make_shared<Ipc::Array>();
@@ -298,10 +341,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSetUserPassword: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         //{{{ Node management
@@ -324,10 +366,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementInstallNode: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -348,10 +389,25 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementUninstallNode: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementGetNodePackages"));
+        signatures = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
+        signatures->arrayValue->reserve(2);
+        parameters->push_back(signatures); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
+        signatures->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementGetNodePackages: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
         //}}}
 
         //{{{ Updates
@@ -365,10 +421,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptRunning: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -380,10 +435,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpdate: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -395,10 +449,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpgrade: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -410,10 +463,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptUpgradeSpecific: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -425,10 +477,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementAptFullUpgrade: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -440,10 +491,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementHomegearUpdateAvailable: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -455,10 +505,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSystemUpdateAvailable: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         //{{{ Backups
@@ -472,10 +521,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateBackup: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -489,10 +537,27 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementRestoreBackup: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
+        //}}}
+
+        //{{{ System reset
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementSystemReset"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //1st parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementSystemReset: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
         //}}}
 
         //{{{ CA and gateways
@@ -506,10 +571,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCaExists: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -521,10 +585,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateCa: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -538,10 +601,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCreateCert: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -555,10 +617,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementDeleteCert: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         //}}}
 
         // {{{ System configuration
@@ -572,10 +633,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementGetNetworkConfiguration: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
@@ -589,10 +649,9 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSetNetworkConfiguration: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
         // }}}
 
         // {{{ Device description files
@@ -609,13 +668,50 @@ void IpcClient::onConnect()
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            error = true;
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCopyDeviceDescriptionFile: " + result->structValue->at("faultString")->stringValue);
+            return;
         }
-        if (error) return;
+        // }}}
+
+        // {{{ Get Homegear's PID
+        result = invoke("getHomegearPid", std::make_shared<Ipc::Array>());
+        if(result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not get Homegear's PID: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+        _homegearPid = result->integerValue64;
+        GD::out.printInfo("Info: Homegear's process ID is: " + std::to_string(_homegearPid));
         // }}}
 
         GD::out.printInfo("Info: RPC methods successfully registered.");
+
+        GD::out.printInfo("Info: Starting lifetick thread...");
+        if(_lifetickThread.joinable())
+        {
+            _stopLifetickThread = true;
+            _lifetickThread.join();
+        }
+        _stopLifetickThread = false;
+        _lifetickThread = std::thread(&IpcClient::lifetickThread, this);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+}
+
+void IpcClient::onDisconnect()
+{
+    try
+    {
+        GD::out.printInfo("Info: Connection to Homegear closed.");
+        GD::out.printInfo("Info: Stopping lifetick thread...");
+        if (_lifetickThread.joinable())
+        {
+            _stopLifetickThread = true;
+            _lifetickThread.join();
+        }
     }
     catch (const std::exception& ex)
     {
@@ -629,15 +725,23 @@ void IpcClient::onConnectError()
     {
         if(BaseLib::Io::fileExists(GD::settings.homegearDataPath() + "homegear_updated"))
         {
-            setRootReadOnly(false);
             std::string output;
             BaseLib::ProcessManager::exec(R"(lsof /var/lib/dpkg/lock >/dev/null 2>&1 || echo "true")", GD::bl->fileDescriptorManager.getMax(), output);
             BaseLib::HelperFunctions::trim(output);
             if(output == "true")
             {
-                BaseLib::Io::deleteFile(GD::settings.homegearDataPath() + "homegear_updated");
-                BaseLib::ProcessManager::exec(R"((service homegear restart&) &)", GD::bl->fileDescriptorManager.getMax(), output);
-                BaseLib::ProcessManager::exec(R"((service homegear-management restart&) &)", GD::bl->fileDescriptorManager.getMax(), output);
+                try
+                {
+                    setRootReadOnly(false);
+                    BaseLib::Io::deleteFile(GD::settings.homegearDataPath() + "homegear_updated");
+                    setRootReadOnly(true);
+                }
+                catch (const std::exception& ex)
+                {
+                    GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+                }
+                BaseLib::ProcessManager::exec(R"((service homegear start&) &)", GD::bl->fileDescriptorManager.getMax());
+                BaseLib::ProcessManager::exec(R"((service homegear-management restart&) &)", GD::bl->fileDescriptorManager.getMax());
             }
         }
     }
@@ -645,7 +749,6 @@ void IpcClient::onConnectError()
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    setRootReadOnly(true);
 }
 
 void IpcClient::setRootReadOnly(bool readOnly)
@@ -677,7 +780,12 @@ bool IpcClient::isAptRunning()
 {
     try
     {
+        std::string output;
+        auto commandStatus = BaseLib::ProcessManager::exec("pgrep apt-get", GD::bl->fileDescriptorManager.getMax(), output);
+        if(commandStatus == 0) return true;
+
         setRootReadOnly(false);
+
         auto lockFd1 = open("/var/lib/dpkg/lock", O_RDONLY | O_CREAT, 0640);
         auto lockFd2 = open("/var/lib/dpkg/lock-frontend", O_RDONLY | O_CREAT, 0640);
 
@@ -725,18 +833,23 @@ bool IpcClient::isAptRunning()
     return true;
 }
 
-int32_t IpcClient::startCommandThread(std::string command, Ipc::PVariable metadata)
+int32_t IpcClient::startCommandThread(std::string command, bool detach, Ipc::PVariable metadata)
 {
     try
     {
-        std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
-
         if(_disposing) return -1;
+
+        std::unordered_map<int32_t, PCommandInfo> commandInfoCopy;
+
+        {
+            std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
+            auto commandInfoCopy = _commandInfo;
+        }
 
         int32_t runningCommands = 0;
 
         std::list<int32_t> idsToErase;
-        for(auto& commandInfo : _commandInfo)
+        for(auto& commandInfo : commandInfoCopy)
         {
             if(!commandInfo.second->running)
             {
@@ -751,20 +864,25 @@ int32_t IpcClient::startCommandThread(std::string command, Ipc::PVariable metada
 
         if(runningCommands >= GD::settings.maxCommandThreads()) return -2;
 
-        for(auto idToErase : idsToErase)
-        {
-            _commandInfo.erase(idToErase);
-        }
-
         int32_t currentId = -1;
         while(currentId == -1 || currentId == -2) currentId = _currentCommandInfoId++;
 
         auto commandInfo = std::make_shared<CommandInfo>();
         commandInfo->running = true;
         commandInfo->command = std::move(command);
+        commandInfo->detach = detach;
         commandInfo->metadata = metadata;
-        _commandInfo.emplace(currentId, commandInfo);
         commandInfo->thread = std::thread(&IpcClient::executeCommand, this, commandInfo);
+
+        {
+            std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
+            for(auto idToErase : idsToErase)
+            {
+                _commandInfo.erase(idToErase);
+            }
+
+            _commandInfo.emplace(currentId, commandInfo);
+        }
 
         return currentId;
     }
@@ -779,13 +897,26 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
 {
     try
     {
-        setRootReadOnly(false);
-
         std::string output;
-        auto commandStatus = BaseLib::ProcessManager::exec(commandInfo->command, GD::bl->fileDescriptorManager.getMax(), output);
-        std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
-        commandInfo->status = commandStatus;
-        commandInfo->output = std::move(output);
+        if(commandInfo->detach)
+        {
+            setRootReadOnly(false);
+            auto commandStatus = BaseLib::ProcessManager::exec(commandInfo->command, GD::bl->fileDescriptorManager.getMax());
+            std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
+            commandInfo->status = commandStatus ? 0 : -1;
+        }
+        else
+        {
+            setRootReadOnly(false);
+            auto commandStatus = BaseLib::ProcessManager::exec(commandInfo->command, GD::bl->fileDescriptorManager.getMax(), output);
+            setRootReadOnly(true);
+
+            {
+                std::lock_guard<std::mutex> outputGuard(commandInfo->outputMutex);
+                commandInfo->status = commandStatus;
+                commandInfo->output = std::move(output);
+            }
+        }
         commandInfo->endTime = BaseLib::HelperFunctions::getTime();
         GD::out.printInfo("Info: Output of command " + commandInfo->command + ":\n" + commandInfo->output);
     }
@@ -794,7 +925,6 @@ void IpcClient::executeCommand(PCommandInfo commandInfo)
         commandInfo->status = -1;
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    setRootReadOnly(true);
     commandInfo->running = false;
 }
 
@@ -895,7 +1025,7 @@ Ipc::PVariable IpcClient::dpkgPackageInstalled(Ipc::PArray& parameters)
         std::string output;
         auto commandStatus = BaseLib::ProcessManager::exec("dpkg-query -W -f '${db:Status-Abbrev}|${binary:Package}\\n' '*' 2>/dev/null | grep '^ii' | awk -F '|' '{print $2}' | cut -d ':' -f 1 | grep ^" + package + "$", GD::bl->fileDescriptorManager.getMax(), output);
 
-        if(commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
+        if(commandStatus != 0) return std::make_shared<Ipc::Variable>(false);;
 
         BaseLib::HelperFunctions::trim(output);
 
@@ -1049,6 +1179,8 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray& parameters)
             {
                 auto settingIterator = entry.second.find(parameters->at(1)->stringValue);
                 if(settingIterator == entry.second.end()) return Ipc::Variable::createError(-2, "You are not allowed to write this setting.");
+
+                BaseLib::HelperFunctions::stringReplace(parameters->at(2)->stringValue, "\n", "\\n");
 
                 setRootReadOnly(false);
 
@@ -1226,18 +1358,55 @@ Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray& parameters)
         if(parameters->at(0)->type == Ipc::VariableType::tString)
         {
             BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
-            nodeNames = "node-blue-node-" + parameters->at(0)->stringValue;
+            nodeNames = parameters->at(0)->stringValue.compare(0, 15, "node-blue-node-") == 0 ? parameters->at(0)->stringValue : "node-blue-node-" + parameters->at(0)->stringValue;
         }
         else
         {
             for(auto& entry : *parameters->at(0)->arrayValue)
             {
                 BaseLib::HelperFunctions::stripNonAlphaNumeric(entry->stringValue);
-                nodeNames += "node-blue-node-" + entry->stringValue + " ";
+                nodeNames += (entry->stringValue.compare(0, 15, "node-blue-node-") == 0 ? entry->stringValue : "node-blue-node-" + parameters->at(0)->stringValue) + " ";
             }
         }
 
         return std::make_shared<Ipc::Variable>(startCommandThread("dpkg --purge " + nodeNames));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::getNodePackages(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        Ipc::PVariable result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+
+        std::string output;
+        BaseLib::ProcessManager::exec(R"(apt list --installed 2>/dev/null | grep "^node-blue-node-" | cut -d "/" -f 1)", GD::bl->fileDescriptorManager.getMax(), output);
+        BaseLib::HelperFunctions::trim(output);
+        auto packages = BaseLib::HelperFunctions::splitAll(output, '\n');
+        for(auto& package : packages)
+        {
+            output.clear();
+            BaseLib::ProcessManager::exec("dpkg-query -L " + package + " 2>/dev/null | grep \".hni$\"", GD::bl->fileDescriptorManager.getMax(), output);
+            BaseLib::HelperFunctions::trim(output);
+            auto files = BaseLib::HelperFunctions::splitAll(output, '\n');
+            for(auto& file : files)
+            {
+                auto parts = BaseLib::HelperFunctions::splitAll(file, '/');
+                if(parts.size() < 2) continue;
+
+                auto id = parts.at(parts.size() - 2) + '/' + parts.back();
+                result->structValue->emplace(id, std::make_shared<Ipc::Variable>(package));
+            }
+        }
+
+        return result;
     }
     catch (const std::exception& ex)
     {
@@ -1260,7 +1429,6 @@ Ipc::PVariable IpcClient::aptRunning(Ipc::PArray& parameters)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    setRootReadOnly(true);
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -1272,7 +1440,7 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("apt update"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("apt-get update", true));
     }
     catch (const std::exception& ex)
     {
@@ -1311,7 +1479,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             packages << linePair.first << ' ';
         }
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1)&)&"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1", true));
     }
     catch (const std::exception& ex)
     {
@@ -1332,7 +1500,7 @@ Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1)&)&"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1", true));
     }
     catch (const std::exception& ex)
     {
@@ -1349,7 +1517,7 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("((DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1)&)&"));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1", true));
     }
     catch (const std::exception& ex)
     {
@@ -1430,7 +1598,7 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray& parameters)
         auto metadata = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
         metadata->structValue->emplace("filename", std::make_shared<Ipc::Variable>(file));
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("/var/lib/homegear/scripts/BackupHomegear.sh " + file, metadata));
+        return std::make_shared<Ipc::Variable>(startCommandThread("/var/lib/homegear/scripts/BackupHomegear.sh " + file, false, metadata));
     }
     catch (const std::exception& ex)
     {
@@ -1448,6 +1616,21 @@ Ipc::PVariable IpcClient::restoreBackup(Ipc::PArray& parameters)
         if(!BaseLib::Io::fileExists(parameters->at(0)->stringValue)) return Ipc::Variable::createError(-1, "Parameter 1 is not a valid file.");
 
         return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/RestoreHomegear.sh;chmod 750 /var/lib/homegear/scripts/RestoreHomegear.sh;cp -a /var/lib/homegear/scripts/RestoreHomegear.sh /;/RestoreHomegear.sh \"" + parameters->at(0)->stringValue + "\";rm -f /RestoreHomegear.sh"));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
+// {{{ System reset
+Ipc::PVariable IpcClient::systemReset(Ipc::PArray& parameters)
+{
+    try
+    {
+        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh 2>&1", true));
     }
     catch (const std::exception& ex)
     {
@@ -1532,7 +1715,7 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray& parameters)
         metadata->structValue->emplace("certPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/certs/" + filename + ".crt"));
         metadata->structValue->emplace("keyPath", std::make_shared<Ipc::Variable>("/etc/homegear/ca/private/" + filename + ".key"));
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -config /etc/homegear/openssl.cnf -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -config /etc/homegear/openssl.cnf -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr", metadata));
+        return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/" + filename + ".key; chmod 440 private/" + filename + ".key; openssl req -config /etc/homegear/openssl.cnf -new -key private/" + filename + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName + "\"; openssl ca -config /etc/homegear/openssl.cnf -in newcert.csr -out certs/" + filename + ".crt -days 100000 -batch; rm newcert.csr", false, metadata));
     }
     catch (const std::exception& ex)
     {
@@ -1596,9 +1779,136 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray& parameters)
     {
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
+        auto config = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+
+        {
+            auto interfacesContent = BaseLib::Io::getFileContent("/etc/network/interfaces");
+            auto lines = BaseLib::HelperFunctions::splitAll(interfacesContent, '\n');
+
+            auto currentEntry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+            std::string currentIpType;
+            std::string currentAssignmentType;
+
+            bool parse = false;
+            for(auto& line : lines)
+            {
+                BaseLib::HelperFunctions::trim(line);
+                if(line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0)
+                {
+                    parse = true;
+                    continue;
+                }
+                else if(line.compare(0, sizeof("#}}} homegear-management") - 1, "#}}} homegear-management") == 0)
+                {
+                    parse = false;
+                    continue;
+                }
+
+                if(parse)
+                {
+                    auto lineParts = BaseLib::HelperFunctions::splitFirst(line, ' ');
+                    BaseLib::HelperFunctions::trim(lineParts.first);
+                    BaseLib::HelperFunctions::trim(lineParts.second);
+                    if(lineParts.first == "iface")
+                    {
+                        auto ifaceParts = BaseLib::HelperFunctions::splitAll(lineParts.second, ' ');
+                        if(ifaceParts.size() < 3) continue;
+                        auto configIterator = config->structValue->find(ifaceParts.at(0));
+                        if(configIterator == config->structValue->end())
+                        {
+                            currentEntry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+                            auto result = config->structValue->emplace(ifaceParts.at(0), currentEntry);
+                            if(!result.second) continue;
+                        }
+                        else currentEntry = configIterator->second;
+
+                        if(ifaceParts.at(1) == "inet") currentIpType = "ipv4";
+                        else if(ifaceParts.at(1) == "inet6") currentIpType = "ipv6";
+                        else
+                        {
+                            currentEntry->structValue->clear();
+                            config->structValue->erase(ifaceParts.at(0));
+                            continue;
+                        }
+
+                        auto ipTypeIterator = currentEntry->structValue->find(currentIpType);
+                        if(ipTypeIterator == currentEntry->structValue->end())
+                        {
+                            auto ipTypeEntry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+                            auto result = currentEntry->structValue->emplace(currentIpType, ipTypeEntry);
+                            if(!result.second)
+                            {
+                                currentEntry->structValue->clear();
+                                config->structValue->erase(ifaceParts.at(0));
+                                continue;
+                            }
+                            currentEntry = ipTypeEntry;
+                        }
+                        else currentEntry = ipTypeIterator->second;
+
+                        currentAssignmentType = ifaceParts.at(2);
+
+                        currentEntry->structValue->emplace("type", std::make_shared<Ipc::Variable>(currentAssignmentType));
+                    }
+                    else if(currentEntry->structValue->empty()) continue;
+                    else if(lineParts.first == "address") currentEntry->structValue->emplace("address", std::make_shared<Ipc::Variable>(lineParts.second));
+                    else if(lineParts.first == "netmask") currentEntry->structValue->emplace("netmask", std::make_shared<Ipc::Variable>(lineParts.second));
+                    else if(lineParts.first == "gateway") currentEntry->structValue->emplace("gateway", std::make_shared<Ipc::Variable>(lineParts.second));
+                    else if(currentIpType == "ipv6" && currentAssignmentType == "auto" &&
+                        ((lineParts.first == "up" && lineParts.second.compare(0, sizeof("ip -6 addr add") - 1, "ip -6 addr add") == 0) ||
+                        (lineParts.first == "down" && lineParts.second.compare(0, sizeof("ip -6 addr del") - 1, "ip -6 addr del") == 0)))
+                    {
+                        auto elements = BaseLib::HelperFunctions::splitAll(lineParts.second, ' ');
+                        auto ipParts = BaseLib::HelperFunctions::splitLast(elements.at(4), '/');
+                        currentEntry->structValue->emplace("address", std::make_shared<Ipc::Variable>(ipParts.first));
+                        currentEntry->structValue->emplace("netmask", std::make_shared<Ipc::Variable>(ipParts.second));
+                    }
+                }
+            }
+        }
+
+        {
+            auto resolvContent = BaseLib::Io::getFileContent("/etc/resolvconf/resolv.conf.d/head");
+            auto lines = BaseLib::HelperFunctions::splitAll(resolvContent, '\n');
 
 
+            bool parse = false;
+            for(auto& line : lines)
+            {
+                BaseLib::HelperFunctions::trim(line);
+                if(line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0)
+                {
+                    parse = true;
+                    continue;
+                }
+                else if(line.compare(0, sizeof("#}}} homegear-management") - 1, "#}}} homegear-management") == 0)
+                {
+                    parse = false;
+                    continue;
+                }
 
+                if(parse)
+                {
+                    auto lineParts = BaseLib::HelperFunctions::splitFirst(line, ' ');
+                    BaseLib::HelperFunctions::trim(lineParts.first);
+                    BaseLib::HelperFunctions::trim(lineParts.second);
+                    if(lineParts.first == "nameserver")
+                    {
+                        auto configIterator = config->structValue->find("dns");
+                        if(configIterator == config->structValue->end())
+                        {
+                            auto result = config->structValue->emplace("dns", std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray));
+                            if(!result.second) continue;
+                            configIterator = result.first;
+                        }
+
+                        configIterator->second->arrayValue->push_back(std::make_shared<Ipc::Variable>(lineParts.second));
+                    }
+                }
+            }
+        }
+        
+        return config;
     }
     catch (const std::exception& ex)
     {
@@ -1614,18 +1924,154 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray& parameters)
         if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
         if(parameters->at(0)->type != Ipc::VariableType::tStruct) return Ipc::Variable::createError(-1, "Parameter 1 is not of type Struct.");
 
+        std::list<std::string> interfacesLines;
+        std::list<std::string> resolvLines;
+
+        for(auto& entry : *parameters->at(0)->structValue)
+        {
+            if(entry.first == "dns")
+            {
+                for(auto& nameserver : *entry.second->arrayValue)
+                {
+                    if(nameserver->stringValue.empty()) return Ipc::Variable::createError(-2, "At least one invalid nameserver entry.");
+                    resolvLines.push_back("nameserver " + nameserver->stringValue);
+                }
+            }
+            else
+            {
+                for(auto& ipType : *entry.second->structValue)
+                {
+                    if(ipType.first != "ipv4" && ipType.first != "ipv6") return Ipc::Variable::createError(-2, R"(At least one invalid IP type. Only "ipv4" and "ipv6" are supported.)");
+
+                    auto typeIterator = ipType.second->structValue->find("type");
+                    if(typeIterator == ipType.second->structValue->end() || typeIterator->second->stringValue.empty())
+                    {
+                        return Ipc::Variable::createError(-2, "At least one interface entry has no assignment type (static, auto, dhcp, ...).");
+                    }
+                    BaseLib::HelperFunctions::stringReplace(typeIterator->second->stringValue, "\n", "\\n");
+
+                    interfacesLines.emplace_back("iface " + entry.first + " " + (ipType.first == "ipv4" ? "inet" : "inet6") + " " + typeIterator->second->stringValue);
+
+                    auto addressIterator = ipType.second->structValue->find("address");
+                    auto netmaskIterator = ipType.second->structValue->find("netmask");
+                    auto gatewayIterator = ipType.second->structValue->find("gateway");
+
+                    if(addressIterator != ipType.second->structValue->end() &&
+                            netmaskIterator != ipType.second->structValue->end())
+                    {
+                        BaseLib::HelperFunctions::stringReplace(addressIterator->second->stringValue, "\n", "\\n");
+                        BaseLib::HelperFunctions::stringReplace(netmaskIterator->second->stringValue, "\n", "\\n");
+                        if(gatewayIterator != ipType.second->structValue->end())
+                        {
+                            BaseLib::HelperFunctions::stringReplace(gatewayIterator->second->stringValue, "\n", "\\n");
+                        }
+
+                        if(typeIterator->second->stringValue == "auto")
+                        {
+                            //Keep auto assigned IP address and add the manual one. No gateway entry.
+                            interfacesLines.emplace_back("    up ip -6 addr add " + addressIterator->second->stringValue + "/" + netmaskIterator->second->stringValue + " dev $IFACE label $IFACE:0");
+                            interfacesLines.emplace_back("    down ip -6 addr del " + addressIterator->second->stringValue + "/" + netmaskIterator->second->stringValue + " dev $IFACE label $IFACE:0");
+                        }
+                        else
+                        {
+                            interfacesLines.emplace_back("    address " + addressIterator->second->stringValue);
+                            interfacesLines.emplace_back("    netmask " + netmaskIterator->second->stringValue);
+                            if(gatewayIterator != ipType.second->structValue->end())
+                            {
+                                interfacesLines.push_back("    gateway " + gatewayIterator->second->stringValue);
+                            }
+                        }
+                    }
+                }
+
+                interfacesLines.emplace_back(""); //Empty line
+            }
+        }
+
+
+        std::list<std::string> interfacesLinesBefore;
+        std::list<std::string> interfacesLinesAfter;
+        std::list<std::string> resolvLinesBefore;
+        std::list<std::string> resolvLinesAfter;
+
+        {
+            auto interfacesContent = BaseLib::Io::getFileContent("/etc/network/interfaces");
+            auto lines = BaseLib::HelperFunctions::splitAll(interfacesContent, '\n');
+
+            bool before = true;
+            bool after = false;
+            for(auto& line : lines)
+            {
+                BaseLib::HelperFunctions::trim(line);
+
+                if(before) interfacesLinesBefore.emplace_back(line);
+
+                if(line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0)
+                {
+                    before = false;
+                }
+                else if(line.compare(0, sizeof("#}}} homegear-management") - 1, "#}}} homegear-management") == 0)
+                {
+                    after = true;
+                }
+
+                if(after) interfacesLinesAfter.emplace_back(line);
+            }
+        }
+
+        {
+            auto resolvContent = BaseLib::Io::getFileContent("/etc/resolvconf/resolv.conf.d/head");
+            auto lines = BaseLib::HelperFunctions::splitAll(resolvContent, '\n');
+
+            bool before = true;
+            bool after = false;
+            for(auto& line : lines)
+            {
+                BaseLib::HelperFunctions::trim(line);
+
+                if(before) resolvLinesBefore.emplace_back(line);
+
+                if(line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0)
+                {
+                    before = false;
+                }
+                else if(line.compare(0, sizeof("#}}} homegear-management") - 1, "#}}} homegear-management") == 0)
+                {
+                    after = true;
+                }
+
+                if(after) resolvLinesAfter.emplace_back(line);
+            }
+        }
+
         setRootReadOnly(false);
 
+        {
+            std::ostringstream interfacesStream;
+            for(auto& line : interfacesLinesBefore) interfacesStream << line << '\n';
+            for(auto& line : interfacesLines) interfacesStream << line << '\n';
+            for(auto& line : interfacesLinesAfter) interfacesStream << line << '\n';
 
+            BaseLib::Io::writeFile("/etc/network/interfaces", interfacesStream.str());
+        }
+
+        {
+            std::ostringstream resolvStream;
+            for(auto& line : resolvLinesBefore) resolvStream << line << '\n';
+            for(auto& line : resolvLines) resolvStream << line << '\n';
+            for(auto& line : resolvLinesAfter) resolvStream << line << '\n';
+
+            BaseLib::Io::writeFile("/etc/resolvconf/resolv.conf.d/head", resolvStream.str());
+        }
 
         setRootReadOnly(true);
-
-        
+        return std::make_shared<Ipc::Variable>();
     }
     catch (const std::exception& ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
+    setRootReadOnly(true);
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 // }}}

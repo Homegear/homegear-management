@@ -49,46 +49,36 @@ void startUp();
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 bool _startAsDaemon = false;
-std::mutex _shuttingDownMutex;
-std::atomic_bool _startUpComplete;
-std::atomic_bool _shutdownQueued;
-bool _disposing = false;
 std::thread _signalHandlerThread;
-
-void exitProgram(int exitCode)
-{
-    exit(exitCode);
-}
+bool _stopProgram = false;
+int _signalNumber = -1;
+std::mutex _stopProgramMutex;
+std::condition_variable _stopProgramConditionVariable;
 
 void terminateProgram(int signalNumber)
 {
-    _shuttingDownMutex.lock();
-    if(!_startUpComplete)
+    try
     {
-        GD::out.printMessage("Info: Startup is not complete yet. Queueing shutdown.");
-        _shutdownQueued = true;
-        _shuttingDownMutex.unlock();
+        GD::out.printMessage("(Shutdown) => Stopping Homegear Management (Signal: " + std::to_string(signalNumber) + ")");
+        GD::bl->shuttingDown = true;
+        GD::ipcClient->stop();
+        GD::ipcClient.reset();
+        BaseLib::ProcessManager::stopSignalHandler(GD::bl->threadManager);
+        GD::out.printMessage("(Shutdown) => Shutdown complete.");
+        fclose(stdout);
+        fclose(stderr);
+        gnutls_global_deinit();
+        gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
+        gcry_control(GCRYCTL_TERM_SECMEM);
+        gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
+
         return;
     }
-    if(GD::bl->shuttingDown)
+    catch(const std::exception& ex)
     {
-        _shuttingDownMutex.unlock();
-        return;
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    GD::out.printMessage("(Shutdown) => Stopping Homegear Management (Signal: " + std::to_string(signalNumber) + ")");
-    GD::bl->shuttingDown = true;
-    _shuttingDownMutex.unlock();
-    _disposing = true;
-    GD::ipcClient->stop();
-    GD::ipcClient.reset();
-    GD::out.printMessage("(Shutdown) => Shutdown complete.");
-    fclose(stdout);
-    fclose(stderr);
-    gnutls_global_deinit();
-    gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
-    gcry_control(GCRYCTL_TERM_SECMEM);
-    gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
-    exit(0);
+    _exit(1);
 }
 
 void signalHandlerThread()
@@ -111,28 +101,28 @@ void signalHandlerThread()
     sigaddset(&set, SIGTTIN);
     sigaddset(&set, SIGTTOU);
 
-    while(true)
+    while(!_stopProgram)
     {
         try
         {
-            sigwait(&set, &signalNumber);
+            if(sigwait(&set, &signalNumber) != 0)
+            {
+                GD::out.printError("Error calling sigwait. Killing myself.");
+                raise(SIGKILL);
+            }
             if(signalNumber == SIGTERM || signalNumber == SIGINT)
             {
-                terminateProgram(signalNumber);
+                std::unique_lock<std::mutex> stopHomegearGuard(_stopProgramMutex);
+                _stopProgram = true;
+                _signalNumber = signalNumber;
+                stopHomegearGuard.unlock();
+                _stopProgramConditionVariable.notify_all();
+                return;
             }
             else if(signalNumber == SIGHUP)
             {
-                GD::out.printMessage("Info: SIGHUP received...");
-                _shuttingDownMutex.lock();
-                GD::out.printMessage("Info: Reloading...");
-                if(!_startUpComplete)
-                {
-                    _shuttingDownMutex.unlock();
-                    GD::out.printError("Error: Cannot reload. Startup is not completed.");
-                    return;
-                }
-                _startUpComplete = false;
-                _shuttingDownMutex.unlock();
+                GD::out.printMessage("Info: SIGHUP received. Reloading...");
+
                 if(!std::freopen((GD::settings.logfilePath() + "homegear-management.log").c_str(), "a", stdout))
                 {
                     GD::out.printError("Error: Could not redirect output to new log file.");
@@ -141,21 +131,14 @@ void signalHandlerThread()
                 {
                     GD::out.printError("Error: Could not redirect errors to new log file.");
                 }
-                _shuttingDownMutex.lock();
-                _startUpComplete = true;
-                if(_shutdownQueued)
-                {
-                    _shuttingDownMutex.unlock();
-                    terminateProgram(SIGTERM);
-                }
-                _shuttingDownMutex.unlock();
+
                 GD::out.printInfo("Info: Reload complete.");
             }
             else
             {
-                if(!_disposing) GD::out.printCritical("Critical: Signal " + std::to_string(signalNumber) + " received. Stopping Homegear Management...");
-                signal(signalNumber, SIG_DFL); //Reset signal handler for the current signal to default
-                kill(getpid(), signalNumber); //Generate core dump
+                GD::out.printCritical("Signal " + std::to_string(signalNumber) + " received.");
+                pthread_sigmask(SIG_SETMASK, &BaseLib::SharedObjects::defaultSignalMask, nullptr);
+                raise(signalNumber); //Raise same signal again using the default action.
             }
         }
         catch(const std::exception& ex)
@@ -284,11 +267,11 @@ void startDaemon()
 		pid = fork();
 		if(pid < 0)
 		{
-			exitProgram(1);
+			exit(1);
 		}
 		if(pid > 0)
 		{
-			exitProgram(0);
+			exit(0);
 		}
 
 		//Set process permission
@@ -298,7 +281,7 @@ void startDaemon()
 		sid = setsid();
 		if(sid < 0)
 		{
-			exitProgram(1);
+			exit(1);
 		}
 
 		close(STDIN_FILENO);
@@ -316,28 +299,8 @@ void startUp()
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");
-			exitProgram(1);
+			exit(1);
 		}
-
-        {
-            sigset_t set{};
-            sigemptyset(&set);
-            sigaddset(&set, SIGHUP);
-            sigaddset(&set, SIGTERM);
-            sigaddset(&set, SIGINT);
-            sigaddset(&set, SIGABRT);
-            sigaddset(&set, SIGSEGV);
-            sigaddset(&set, SIGQUIT);
-            sigaddset(&set, SIGILL);
-            sigaddset(&set, SIGFPE);
-            sigaddset(&set, SIGALRM);
-            sigaddset(&set, SIGUSR1);
-            sigaddset(&set, SIGUSR2);
-            sigaddset(&set, SIGTSTP);
-            sigaddset(&set, SIGTTIN);
-            sigaddset(&set, SIGTTOU);
-            sigprocmask(SIG_BLOCK, &set, nullptr);
-        }
 
 		if(!std::freopen((GD::settings.logfilePath() + "homegear-management.log").c_str(), "a", stdout))
 		{
@@ -355,9 +318,6 @@ void startUp()
     	initGnuTls();
 
 		setLimits();
-
-        BaseLib::ProcessManager::startSignalHandler(); //Needs to be called before starting any threads
-        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
 
         if(GD::runAsUser.empty()) GD::runAsUser = GD::settings.runAsUser();
         if(GD::runAsGroup.empty()) GD::runAsGroup = GD::settings.runAsGroup();
@@ -388,7 +348,7 @@ void startUp()
 			if(GD::bl->userId == 0 || GD::bl->groupId == 0)
 			{
 				GD::out.printCritical("Could not drop privileges. User name or group name is not valid.");
-				exitProgram(1);
+                exit(1);
 			}
 			GD::out.printInfo("Info: Dropping privileges to user " + GD::runAsUser + " (" + std::to_string(GD::bl->userId) + ") and group " + GD::runAsGroup + " (" + std::to_string(GD::bl->groupId) + ")");
 
@@ -406,19 +366,19 @@ void startUp()
 			if(setgid(GD::bl->groupId) != 0)
 			{
 				GD::out.printCritical("Critical: Could not drop group privileges.");
-				exitProgram(1);
+                exit(1);
 			}
 
 			if(setgroups(supplementaryGroups.size(), supplementaryGroups.data()) != 0)
 			{
 				GD::out.printCritical("Critical: Could not set supplementary groups: " + std::string(strerror(errno)));
-				exitProgram(1);
+                exit(1);
 			}
 
 			if(setuid(GD::bl->userId) != 0)
 			{
 				GD::out.printCritical("Critical: Could not drop user privileges.");
-				exitProgram(1);
+                exit(1);
 			}
 
 			//Core dumps are disabled by setuid. Enable them again.
@@ -479,27 +439,27 @@ void startUp()
 		}
 
 		GD::ipcClient.reset(new IpcClient(GD::settings.socketPath() + "homegearIPC.sock"));
-		if(!_shutdownQueued) GD::ipcClient->start();
+		GD::ipcClient->start();
+
+        BaseLib::ProcessManager::startSignalHandler(); //Needs to be called before starting any threads
+        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
 
         GD::out.printMessage("Startup complete.");
 
         GD::bl->booting = false;
-
-        _shuttingDownMutex.lock();
-		_startUpComplete = true;
-		if(_shutdownQueued)
-		{
-			_shuttingDownMutex.unlock();
-			terminateProgram(SIGTERM);
-		}
-		_shuttingDownMutex.unlock();
 
 		if(BaseLib::Io::fileExists(GD::settings.workingDirectory() + "core"))
 		{
 			GD::out.printError("Error: A core file exists in Homegear Management's working directory (\"" + GD::settings.workingDirectory() + "core" + "\"). Please send this file to the Homegear team including information about your system (Linux distribution, CPU architecture), the Homegear Management version, the current log files and information what might've caused the error.");
 		}
 
-       	while(true) std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        while(!_stopProgram)
+        {
+            std::unique_lock<std::mutex> stopHomegearGuard(_stopProgramMutex);
+            _stopProgramConditionVariable.wait(stopHomegearGuard);
+        }
+
+        terminateProgram(_signalNumber);
 	}
 	catch(const std::exception& ex)
     {
@@ -511,9 +471,6 @@ int main(int argc, char* argv[])
 {
 	try
     {
-		_startUpComplete = false;
-		_shutdownQueued = false;
-
     	getExecutablePath(argc, argv);
     	GD::bl.reset(new BaseLib::SharedObjects());
     	GD::out.init(GD::bl.get());
@@ -607,6 +564,32 @@ int main(int argc, char* argv[])
     		}
     	}
 
+        {
+            //Block the signals below during start up
+            //Needs to be called after initialization of GD::bl as GD::bl reads the current (default) signal mask.
+            sigset_t set{};
+            sigemptyset(&set);
+            sigaddset(&set, SIGHUP);
+            sigaddset(&set, SIGTERM);
+            sigaddset(&set, SIGINT);
+            sigaddset(&set, SIGABRT);
+            sigaddset(&set, SIGSEGV);
+            sigaddset(&set, SIGQUIT);
+            sigaddset(&set, SIGILL);
+            sigaddset(&set, SIGFPE);
+            sigaddset(&set, SIGALRM);
+            sigaddset(&set, SIGUSR1);
+            sigaddset(&set, SIGUSR2);
+            sigaddset(&set, SIGTSTP);
+            sigaddset(&set, SIGTTIN);
+            sigaddset(&set, SIGTTOU);
+            if(pthread_sigmask(SIG_BLOCK, &set, nullptr) < 0)
+            {
+                std::cerr << "SIG_BLOCK error." << std::endl;
+                exit(1);
+            }
+        }
+
     	// {{{ Load settings
 			GD::out.printInfo("Loading settings from " + GD::configPath + "management.conf");
 			GD::settings.load(GD::configPath + "management.conf", GD::executablePath);
@@ -629,19 +612,18 @@ int main(int argc, char* argv[])
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");
-			exitProgram(1);
+			exit(1);
 		}
 
 		if(_startAsDaemon) startDaemon();
     	startUp();
 
+        GD::bl->threadManager.join(_signalHandlerThread);
         return 0;
     }
     catch(const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 	}
-    terminateProgram(SIGTERM);
-
-    return 1;
+    _exit(1);
 }
