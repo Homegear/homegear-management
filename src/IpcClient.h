@@ -47,6 +47,7 @@ public:
     ~IpcClient() override;
 private:
     void onConnect() override;
+    void onDisconnect() override;
     void onConnectError() override;
 
     class CommandInfo
@@ -55,6 +56,7 @@ private:
         int64_t endTime = 0;
         std::string command;
         std::atomic_bool running {false};
+        bool detach = false;
         std::thread thread;
         std::mutex outputMutex;
         std::string output;
@@ -70,8 +72,13 @@ private:
     std::unordered_map<int32_t, PCommandInfo> _commandInfo;
     std::mutex _readOnlyCountMutex;
     int32_t _readOnlyCount = 0;
+    std::atomic<int32_t> _homegearPid{0};
+    std::atomic_bool _stopLifetickThread{false};
+    std::thread _lifetickThread;
 
-    int32_t startCommandThread(std::string command, Ipc::PVariable metadata = std::make_shared<Ipc::Variable>());
+    void lifetickThread();
+
+    int32_t startCommandThread(std::string command, bool detach = false, Ipc::PVariable metadata = std::make_shared<Ipc::Variable>());
     void executeCommand(PCommandInfo commandInfo);
 
     void setRootReadOnly(bool readOnly);
@@ -96,6 +103,7 @@ private:
     // {{{ Node management
     Ipc::PVariable installNode(Ipc::PArray& parameters);
     Ipc::PVariable uninstallNode(Ipc::PArray& parameters);
+    Ipc::PVariable getNodePackages(Ipc::PArray& parameters);
     // }}}
 
     // {{{ Updates
@@ -111,6 +119,10 @@ private:
     // {{{ Backups
     Ipc::PVariable createBackup(Ipc::PArray& parameters);
     Ipc::PVariable restoreBackup(Ipc::PArray& parameters);
+    // }}}
+
+    // {{{ System reset
+    Ipc::PVariable systemReset(Ipc::PArray& parameters);
     // }}}
 
     // {{{ CA and gateways
@@ -131,15 +143,17 @@ private:
          *             "ipv4": {
          *                 type: "static", // or type: "dhcp"
          *                 address: "192.168.178.5",
-         *                 subnet: "255.255.255.0"
+         *                 netmask: "255.255.255.0",
+         *                 gateway: "192.168.178.1"
          *             },
          *             "ipv6": {
          *                 type: "auto", // or type: "static"
          *                 address: "fdab:1::5",
-         *                 subnet: "64"
-         *             },
-         *             "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
-         *         }
+         *                 netmask: "64",
+         *                 gateway: "fdab:1::1"
+         *             }
+         *         },
+         *         "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
          *     }
          *
          * @param parameters This method has no parameters.
@@ -148,22 +162,24 @@ private:
         Ipc::PVariable getNetworkConfiguration(Ipc::PArray& parameters);
 
         /**
-         * Sets the content of the file `/etc/network/interfaces`. You need to provice a Struct with the new configuration as parameter:
+         * Sets the content of the file `/etc/network/interfaces`. You need to provide a Struct with the new configuration as parameter:
          *
          *     {
          *         "eth0": {
          *             "ipv4": {
          *                 type: "static", // or type: "dhcp"
          *                 address: "192.168.178.5",
-         *                 subnet: "255.255.255.0"
+         *                 netmask: "255.255.255.0",
+         *                 gateway: "192.168.178.1"
          *             },
          *             "ipv6": {
          *                 type: "auto", // or type: "static"
          *                 address: "fdab:1::5",
-         *                 subnet: "64"
-         *             },
-         *             "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
-         *         }
+         *                 netmask: "64",
+         *                 gateway: "fdab:1::1"
+         *             }
+         *         },
+         *         "dns": ["9.9.9.9", "1.1.1.1", "2620:fe::fe"] // Leave emtpy for automatic
          *     }
          *
          * @param parameters The new network configuration as a Struct.

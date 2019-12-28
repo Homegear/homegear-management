@@ -15,7 +15,10 @@ case $1 in
 				if test -f /usr/lib/insserv/insserv; then
 					/usr/lib/insserv/insserv homegear-management
 				else
-					insserv homegear-management
+					command -v insserv > /dev/null 2>&1
+					if [ $? -eq 0 ]; then
+						insserv homegear-management
+					fi
 				fi
 			else
 				systemctl enable homegear-management.service
