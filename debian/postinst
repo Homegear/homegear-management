@@ -4,27 +4,29 @@ case $1 in
 	# Configure this package. If the package must prompt the user for
 	# information, do it here.
 	configure)
-		pidof systemd
-		if [ $? -eq 0 ]; then
-			systemctl enable homegear-management.service
-			service homegear-management start
-		else
-			result=`ps -A | grep -c ' systemd$'`
-			command -v systemctl > /dev/null 2>&1
-			if [ $? -ne 0 ] || [ $result -eq 0 ]; then
-				if test -f /usr/lib/insserv/insserv; then
-					/usr/lib/insserv/insserv homegear-management
-				else
-					command -v insserv > /dev/null 2>&1
-					if [ $? -eq 0 ]; then
-						insserv homegear-management
-					fi
-				fi
-			else
-				systemctl enable homegear-management.service
-				service homegear-management start
-			fi
-		fi
+	  if [[ ! -f /.dockerenv ]]; then
+      pidof systemd
+      if [ $? -eq 0 ]; then
+        systemctl enable homegear-management.service
+        service homegear-management start
+      else
+        result=`ps -A | grep -c ' systemd$'`
+        command -v systemctl > /dev/null 2>&1
+        if [ $? -ne 0 ] || [ $result -eq 0 ]; then
+          if test -f /usr/lib/insserv/insserv; then
+            /usr/lib/insserv/insserv homegear-management
+          else
+            command -v insserv > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+              insserv homegear-management
+            fi
+          fi
+        else
+          systemctl enable homegear-management.service
+          service homegear-management start
+        fi
+      fi
+    fi
 		;;
 
 	# Back out of an attempt to upgrade this package FROM THIS VERSION
