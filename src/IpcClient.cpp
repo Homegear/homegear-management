@@ -61,6 +61,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("managementGetConfigurationEntry", std::bind(&IpcClient::getConfigurationEntry, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementSetConfigurationEntry", std::bind(&IpcClient::setConfigurationEntry, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementReboot", std::bind(&IpcClient::reboot, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementShutdown", std::bind(&IpcClient::shutdown, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementWriteCloudMaticConfig", std::bind(&IpcClient::writeCloudMaticConfig, this, std::placeholders::_1));
 
@@ -286,6 +287,20 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             Ipc::Output::printCritical("Critical: Could not register RPC method managementReboot: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementShutdown"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementShutdown: " + result->structValue->at("faultString")->stringValue);
             return;
         }
 
@@ -1114,6 +1129,21 @@ Ipc::PVariable IpcClient::reboot(Ipc::PArray& parameters)
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
         return std::make_shared<Ipc::Variable>(startCommandThread("reboot"));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::shutdown(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("shutdown -H now"));
     }
     catch (const std::exception& ex)
     {

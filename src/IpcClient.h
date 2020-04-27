@@ -91,6 +91,7 @@ private:
     Ipc::PVariable sleep(Ipc::PArray& parameters);
     Ipc::PVariable getConfigurationEntry(Ipc::PArray& parameters);
     Ipc::PVariable reboot(Ipc::PArray& parameters);
+    Ipc::PVariable shutdown(Ipc::PArray& parameters);
     Ipc::PVariable serviceCommand(Ipc::PArray& parameters);
     Ipc::PVariable setConfigurationEntry(Ipc::PArray& parameters);
     Ipc::PVariable writeCloudMaticConfig(Ipc::PArray& parameters);
