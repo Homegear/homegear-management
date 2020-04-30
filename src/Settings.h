@@ -59,6 +59,7 @@ public:
     std::unordered_set<std::string> allowedServiceCommands() { return _allowedServiceCommands; }
     std::unordered_set<std::string> controllableServices() { return _controllableServices; }
 	std::unordered_set<std::string> packagesWhitelist() { return _packagesWhitelist; }
+	std::unordered_set<std::string> packagesBlacklist() { return _packagesBlacklist; }
 	std::unordered_map<std::string, std::unordered_set<std::string>>& settingsWhitelist() { return _settingsWhitelist; }
 private:
 	std::string _executablePath;
@@ -83,6 +84,7 @@ private:
     std::unordered_set<std::string> _allowedServiceCommands;
     std::unordered_set<std::string> _controllableServices;
     std::unordered_set<std::string> _packagesWhitelist;
+	std::unordered_set<std::string> _packagesBlacklist;
     std::unordered_map<std::string, std::unordered_set<std::string>> _settingsWhitelist;
 
 	void reset();
