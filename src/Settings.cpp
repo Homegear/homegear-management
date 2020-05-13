@@ -54,6 +54,7 @@ void Settings::reset()
     _allowedServiceCommands.clear();
     _controllableServices.clear();
 	_packagesWhitelist.clear();
+	_packagesBlacklist.clear();
     _settingsWhitelist.clear();
 }
 
@@ -68,6 +69,8 @@ bool Settings::changed()
 
 void Settings::load(std::string filename, std::string executablePath)
 {
+	constexpr std::array<const char*, 31> blackList {{"wget", "libsqlite3-0", "libreadline7", "libreadline6", "adduser", "libgcrypt20", "libgnutlsxx28", "libgpg-error0", "unzip", "p7zip-full", "procps", "libxslt1.1", "libedit2", "libenchant1c2a", "libqdbm14", "libltdl7", "zlib1g", "libtinfo5", "libtinfo6", "libgmp10", "libxml2", "libssl1.1", "libssl1.0.0", "openssl", "libcurl3-gnutls", "zlib1g", "libicu52", "libicu55", "libicu57", "libicu60", "libicu63"}};
+
 	try
 	{
 		_executablePath = executablePath;
@@ -83,6 +86,12 @@ void Settings::load(std::string filename, std::string executablePath)
 			GD::bl->out.printError("Unable to open config file: " + filename + ". " + strerror(errno));
 			return;
 		}
+
+	    for(auto& element : blackList)
+    	{
+        	_packagesBlacklist.emplace(element);
+    	}
+    	GD::bl->out.printDebug("Debug: packagesBlacklist was set");
 
 		while (fgets(input, 1024, fin))
 		{

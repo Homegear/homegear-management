@@ -117,6 +117,11 @@ private:
     Ipc::PVariable systemUpdateAvailable(Ipc::PArray& parameters);
     // }}}
 
+    // {{{ Package management
+    Ipc::PVariable aptInstallSpecific(Ipc::PArray& parameters);
+    Ipc::PVariable aptDeinstallSpecific(Ipc::PArray& parameters);
+    // }}}
+
     // {{{ Backups
     Ipc::PVariable createBackup(Ipc::PArray& parameters);
     Ipc::PVariable restoreBackup(Ipc::PArray& parameters);

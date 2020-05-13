@@ -85,6 +85,11 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("managementAptFullUpgrade", std::bind(&IpcClient::aptFullUpgrade, this, std::placeholders::_1));
     // }}}
 
+    // {{{ Package management
+    _localRpcMethods.emplace("managementAptInstallSpecific", std::bind(&IpcClient::aptInstallSpecific, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementAptDeinstallSpecific", std::bind(&IpcClient::aptDeinstallSpecific, this, std::placeholders::_1));
+    // }}}
+
     // {{{ Backups
     _localRpcMethods.emplace("managementCreateBackup", std::bind(&IpcClient::createBackup, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementRestoreBackup", std::bind(&IpcClient::restoreBackup, this, std::placeholders::_1));
@@ -521,6 +526,35 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSystemUpdateAvailable: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+        //}}}
+
+        // {{{ Package management
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptInstallSpecific"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptInstallSpecific: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptDeinstallSpecific"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptDeinstallSpecific: " + result->structValue->at("faultString")->stringValue);
             return;
         }
         //}}}
@@ -1594,6 +1628,53 @@ Ipc::PVariable IpcClient::systemUpdateAvailable(Ipc::PArray& parameters)
 
         //The exec above returns "Listing..." (count == 1) when no update is available
         return std::make_shared<Ipc::Variable>(count > 1);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
+// {{{ Package management
+Ipc::PVariable IpcClient::aptInstallSpecific(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+
+        auto packagesWhitelist = GD::settings.packagesWhitelist();
+        if(packagesWhitelist.find(parameters->at(0)->stringValue) == packagesWhitelist.end()) return Ipc::Variable::createError(-2, "This package is not in the list of allowed packages.");
+
+        if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=\"--force-overwrite\" -y install " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1", true));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::aptDeinstallSpecific(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+
+        auto packagesBlacklist = GD::settings.packagesBlacklist();
+        if(packagesBlacklist.find(parameters->at(0)->stringValue) != packagesBlacklist.end()) return Ipc::Variable::createError(-2, "You are not allowed to deinstall this package.");
+
+        auto packagesWhitelist = GD::settings.packagesWhitelist();
+        if(packagesWhitelist.find(parameters->at(0)->stringValue) == packagesWhitelist.end()) return Ipc::Variable::createError(-2, "This package is not in the list of allowed packages.");
+
+        if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -y remove --purge " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1", true));
     }
     catch (const std::exception& ex)
     {
