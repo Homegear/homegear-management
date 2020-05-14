@@ -118,8 +118,8 @@ private:
     // }}}
 
     // {{{ Package management
-    Ipc::PVariable aptInstallSpecific(Ipc::PArray& parameters);
-    Ipc::PVariable aptDeinstallSpecific(Ipc::PArray& parameters);
+    Ipc::PVariable aptInstall(Ipc::PArray& parameters);
+    Ipc::PVariable aptRemove(Ipc::PArray& parameters);
     // }}}
 
     // {{{ Backups
@@ -196,6 +196,7 @@ private:
 
     // {{{ Device description files
     Ipc::PVariable copyDeviceDescriptionFile(Ipc::PArray& parameters);
+    Ipc::PVariable uploadDeviceDescriptionFile(Ipc::PArray& parameters);
     // }}}
 };
 

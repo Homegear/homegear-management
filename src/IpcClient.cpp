@@ -86,8 +86,8 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     // }}}
 
     // {{{ Package management
-    _localRpcMethods.emplace("managementAptInstallSpecific", std::bind(&IpcClient::aptInstallSpecific, this, std::placeholders::_1));
-    _localRpcMethods.emplace("managementAptDeinstallSpecific", std::bind(&IpcClient::aptDeinstallSpecific, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementAptInstall", std::bind(&IpcClient::aptInstall, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementAptRemove", std::bind(&IpcClient::aptRemove, this, std::placeholders::_1));
     // }}}
 
     // {{{ Backups
@@ -113,6 +113,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 
     // {{{ Device description files
     _localRpcMethods.emplace("managementCopyDeviceDescriptionFile", std::bind(&IpcClient::copyDeviceDescriptionFile, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementUploadDeviceDescriptionFile", std::bind(&IpcClient::uploadDeviceDescriptionFile, this, std::placeholders::_1));
     // }}}
 }
 
@@ -450,7 +451,7 @@ void IpcClient::onConnect()
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpdate"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
@@ -464,7 +465,7 @@ void IpcClient::onConnect()
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpgrade"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
@@ -478,7 +479,7 @@ void IpcClient::onConnect()
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpgradeSpecific"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
@@ -492,7 +493,7 @@ void IpcClient::onConnect()
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptFullUpgrade"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
@@ -533,28 +534,33 @@ void IpcClient::onConnect()
         // {{{ Package management
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptInstallSpecific"));
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptInstall"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptInstallSpecific: " + result->structValue->at("faultString")->stringValue);
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptInstall: " + result->structValue->at("faultString")->stringValue);
             return;
         }
+
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
-        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptDeinstallSpecific"));
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptRemove"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
         {
-            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptDeinstallSpecific: " + result->structValue->at("faultString")->stringValue);
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptRemove: " + result->structValue->at("faultString")->stringValue);
             return;
         }
         //}}}
@@ -718,6 +724,25 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCopyDeviceDescriptionFile: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementUploadDeviceDescriptionFile"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(4);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBinary)); //1st parameter
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //2nd parameter
+        parameters->back()->arrayValue->push_back(signature);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //3rd parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementUploadDeviceDescriptionFile: " + result->structValue->at("faultString")->stringValue);
             return;
         }
         // }}}
@@ -1638,7 +1663,7 @@ Ipc::PVariable IpcClient::systemUpdateAvailable(Ipc::PArray& parameters)
 // }}}
 
 // {{{ Package management
-Ipc::PVariable IpcClient::aptInstallSpecific(Ipc::PArray& parameters)
+Ipc::PVariable IpcClient::aptInstall(Ipc::PArray& parameters)
 {
     try
     {
@@ -1659,7 +1684,7 @@ Ipc::PVariable IpcClient::aptInstallSpecific(Ipc::PArray& parameters)
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
-Ipc::PVariable IpcClient::aptDeinstallSpecific(Ipc::PArray& parameters)
+Ipc::PVariable IpcClient::aptRemove(Ipc::PArray& parameters)
 {
     try
     {
@@ -2209,6 +2234,47 @@ Ipc::PVariable IpcClient::copyDeviceDescriptionFile(Ipc::PArray& parameters)
         setRootReadOnly(true);
 
         return result;
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::uploadDeviceDescriptionFile(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() < 3 || parameters->size() > 4) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+        if(parameters->at(1)->type != Ipc::VariableType::tBinary && parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type Binary or String.");
+        if(parameters->at(2)->type != Ipc::VariableType::tInteger && parameters->at(2)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter 3 is not of type Integer.");
+
+        BaseLib::HelperFunctions::stripNonPrintable(parameters->at(0)->stringValue);
+        auto filepath = "/etc/homegear/devices/" + std::to_string(parameters->at(2)->integerValue) + "/"+ BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/').second;
+
+        bool isBase64 = parameters->size() >= 3 && parameters->at(3)->booleanValue;
+
+        setRootReadOnly(false);
+
+        if(isBase64)
+        {
+            std::string content;
+            BaseLib::Base64::decode(parameters->at(1)->stringValue, content);
+            BaseLib::Io::writeFile(filepath, content);
+        }
+        else
+        {
+            if(parameters->at(1)->type == Ipc::VariableType::tBinary) BaseLib::Io::writeFile(filepath, parameters->at(1)->binaryValue, parameters->at(1)->binaryValue.size());
+            else BaseLib::Io::writeFile(filepath, parameters->at(1)->stringValue);
+        }
+
+        chmod(filepath.c_str(), S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+
+        setRootReadOnly(true);
+
+        return std::make_shared<Ipc::Variable>();
     }
     catch (const std::exception& ex)
     {
