@@ -2254,7 +2254,7 @@ Ipc::PVariable IpcClient::uploadDeviceDescriptionFile(Ipc::PArray& parameters)
         BaseLib::HelperFunctions::stripNonPrintable(parameters->at(0)->stringValue);
         auto filepath = "/etc/homegear/devices/" + std::to_string(parameters->at(2)->integerValue) + "/"+ BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/').second;
 
-        bool isBase64 = parameters->size() >= 3 && parameters->at(3)->booleanValue;
+        bool isBase64 = parameters->size() > 3 && parameters->at(3)->booleanValue;
 
         setRootReadOnly(false);
 
