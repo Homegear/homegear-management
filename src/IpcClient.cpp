@@ -2268,7 +2268,6 @@ Ipc::PVariable IpcClient::uploadDeviceDescriptionFile(Ipc::PArray& parameters)
         }
         else
         {
-            GD::out.printInfo("Moin " + filepath + " " + std::to_string(parameters->at(1)->stringValue.size()));
             if(parameters->at(1)->type == Ipc::VariableType::tBinary) BaseLib::Io::writeFile(filepath, parameters->at(1)->binaryValue, parameters->at(1)->binaryValue.size());
             else BaseLib::Io::writeFile(filepath, parameters->at(1)->stringValue);
         }
