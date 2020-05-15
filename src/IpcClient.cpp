@@ -2252,7 +2252,9 @@ Ipc::PVariable IpcClient::uploadDeviceDescriptionFile(Ipc::PArray& parameters)
         if(parameters->at(2)->type != Ipc::VariableType::tInteger && parameters->at(2)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter 3 is not of type Integer.");
 
         BaseLib::HelperFunctions::stripNonPrintable(parameters->at(0)->stringValue);
-        auto filepath = "/etc/homegear/devices/" + std::to_string(parameters->at(2)->integerValue) + "/"+ BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/').second;
+        auto filenamePair = BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/');
+        auto filename = filenamePair.second.empty() ? filenamePair.first : filenamePair.second;
+        auto filepath = "/etc/homegear/devices/" + std::to_string(parameters->at(2)->integerValue) + "/"+ filename;
 
         bool isBase64 = parameters->size() > 3 && parameters->at(3)->booleanValue;
 
@@ -2266,6 +2268,7 @@ Ipc::PVariable IpcClient::uploadDeviceDescriptionFile(Ipc::PArray& parameters)
         }
         else
         {
+            GD::out.printInfo("Moin " + filepath + " " + std::to_string(parameters->at(1)->stringValue.size()));
             if(parameters->at(1)->type == Ipc::VariableType::tBinary) BaseLib::Io::writeFile(filepath, parameters->at(1)->binaryValue, parameters->at(1)->binaryValue.size());
             else BaseLib::Io::writeFile(filepath, parameters->at(1)->stringValue);
         }
