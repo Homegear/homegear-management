@@ -198,6 +198,10 @@ private:
     Ipc::PVariable copyDeviceDescriptionFile(Ipc::PArray& parameters);
     Ipc::PVariable uploadDeviceDescriptionFile(Ipc::PArray& parameters);
     // }}}
+
+    // {{{ Internal
+    Ipc::PVariable internalSetRootReadOnlyTrue(Ipc::PArray& parameters);
+    // }}}
 };
 
 #endif

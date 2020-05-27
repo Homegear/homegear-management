@@ -46,9 +46,20 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
             std::string output;
             BaseLib::ProcessManager::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
             BaseLib::HelperFunctions::trim(output);
-            if(output.empty())
+            if(output.empty() || BaseLib::Math::getNumber(output) == 0)
             {
                 BaseLib::ProcessManager::exec("grep '/dev/mmcblk0p1' /proc/mounts | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
+                BaseLib::HelperFunctions::trim(output);
+                if(output.empty() || BaseLib::Math::getNumber(output) == 0)
+                {
+                    BaseLib::ProcessManager::exec("grep '/dev/emmc' /proc/mounts | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
+                    BaseLib::HelperFunctions::trim(output);
+                    if(output.empty() || BaseLib::Math::getNumber(output) == 0)
+                    {
+                        BaseLib::ProcessManager::exec("cat /proc/mounts | grep ' / ' | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
+                        BaseLib::HelperFunctions::trim(output);
+                    }
+                }
             }
             _rootIsReadOnly = BaseLib::Math::getNumber(output) == 1;
         }
@@ -114,6 +125,10 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     // {{{ Device description files
     _localRpcMethods.emplace("managementCopyDeviceDescriptionFile", std::bind(&IpcClient::copyDeviceDescriptionFile, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementUploadDeviceDescriptionFile", std::bind(&IpcClient::uploadDeviceDescriptionFile, this, std::placeholders::_1));
+    // }}}
+
+    // {{{ Internal
+    _localRpcMethods.emplace("managementInternalSetReadOnlyTrue", std::bind(&IpcClient::internalSetRootReadOnlyTrue, this, std::placeholders::_1));
     // }}}
 }
 
@@ -1529,7 +1544,7 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("apt-get update", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("apt-get update; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1568,7 +1583,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             packages << linePair.first << ' ';
         }
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
     }
     catch (const std::exception& ex)
     {
@@ -1589,7 +1604,7 @@ Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
     }
     catch (const std::exception& ex)
     {
@@ -1606,7 +1621,7 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
     }
     catch (const std::exception& ex)
     {
@@ -1675,7 +1690,7 @@ Ipc::PVariable IpcClient::aptInstall(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=\"--force-overwrite\" -y install " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=\"--force-overwrite\" -y install " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
     }
     catch (const std::exception& ex)
     {
@@ -1699,7 +1714,7 @@ Ipc::PVariable IpcClient::aptRemove(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -y remove --purge " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -y remove --purge " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
     }
     catch (const std::exception& ex)
     {
@@ -1766,7 +1781,7 @@ Ipc::PVariable IpcClient::systemReset(Ipc::PArray& parameters)
 {
     try
     {
-        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
     }
     catch (const std::exception& ex)
     {
@@ -2273,6 +2288,25 @@ Ipc::PVariable IpcClient::uploadDeviceDescriptionFile(Ipc::PArray& parameters)
         }
 
         chmod(filepath.c_str(), S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+
+        setRootReadOnly(true);
+
+        return std::make_shared<Ipc::Variable>();
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
+// {{{ Internal
+Ipc::PVariable IpcClient::internalSetRootReadOnlyTrue(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
         setRootReadOnly(true);
 
