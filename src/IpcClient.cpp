@@ -1566,11 +1566,11 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
         std::ostringstream packages;
         if(parameters->at(0)->integerValue == 0)
         {
-            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -v homegear", GD::bl->fileDescriptorManager.getMax(), output);
+            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -v homegear -v node-blue-node", GD::bl->fileDescriptorManager.getMax(), output);
         }
         else if(parameters->at(0)->integerValue == 1)
         {
-            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep homegear", GD::bl->fileDescriptorManager.getMax(), output);
+            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -e homegear -e node-blue-node", GD::bl->fileDescriptorManager.getMax(), output);
         }
         else return Ipc::Variable::createError(-1, "Parameter has invalid value.");
 
@@ -1637,7 +1637,7 @@ Ipc::PVariable IpcClient::homegearUpdateAvailable(Ipc::PArray& parameters)
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
         std::string output;
-        BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep homegear/", GD::bl->fileDescriptorManager.getMax(), output);
+        BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep homegear", GD::bl->fileDescriptorManager.getMax(), output);
 
         if(output.empty()) return std::make_shared<Ipc::Variable>(false);
 
