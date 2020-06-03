@@ -1583,7 +1583,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             packages << linePair.first << ' ';
         }
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1604,7 +1604,7 @@ Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1621,7 +1621,7 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1690,7 +1690,7 @@ Ipc::PVariable IpcClient::aptInstall(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=\"--force-overwrite\" -y install " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=\"--force-overwrite\" -y install " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1714,7 +1714,7 @@ Ipc::PVariable IpcClient::aptRemove(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -y remove --purge " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -y remove --purge " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1781,7 +1781,7 @@ Ipc::PVariable IpcClient::systemReset(Ipc::PArray& parameters)
 {
     try
     {
-        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
