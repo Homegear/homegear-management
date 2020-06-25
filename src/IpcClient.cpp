@@ -46,9 +46,20 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
             std::string output;
             BaseLib::ProcessManager::exec("grep '/dev/root' /proc/mounts | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
             BaseLib::HelperFunctions::trim(output);
-            if(output.empty())
+            if(output.empty() || BaseLib::Math::getNumber(output) == 0)
             {
                 BaseLib::ProcessManager::exec("grep '/dev/mmcblk0p1' /proc/mounts | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
+                BaseLib::HelperFunctions::trim(output);
+                if(output.empty() || BaseLib::Math::getNumber(output) == 0)
+                {
+                    BaseLib::ProcessManager::exec("grep '/dev/emmc' /proc/mounts | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
+                    BaseLib::HelperFunctions::trim(output);
+                    if(output.empty() || BaseLib::Math::getNumber(output) == 0)
+                    {
+                        BaseLib::ProcessManager::exec("cat /proc/mounts | grep ' / ' | grep -c '\\sro[\\s,]'", GD::bl->fileDescriptorManager.getMax(), output);
+                        BaseLib::HelperFunctions::trim(output);
+                    }
+                }
             }
             _rootIsReadOnly = BaseLib::Math::getNumber(output) == 1;
         }
@@ -61,6 +72,7 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("managementGetConfigurationEntry", std::bind(&IpcClient::getConfigurationEntry, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementSetConfigurationEntry", std::bind(&IpcClient::setConfigurationEntry, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementReboot", std::bind(&IpcClient::reboot, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementShutdown", std::bind(&IpcClient::shutdown, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementServiceCommand", std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementWriteCloudMaticConfig", std::bind(&IpcClient::writeCloudMaticConfig, this, std::placeholders::_1));
 
@@ -82,6 +94,11 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
     _localRpcMethods.emplace("managementHomegearUpdateAvailable", std::bind(&IpcClient::homegearUpdateAvailable, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementSystemUpdateAvailable", std::bind(&IpcClient::systemUpdateAvailable, this, std::placeholders::_1));
     _localRpcMethods.emplace("managementAptFullUpgrade", std::bind(&IpcClient::aptFullUpgrade, this, std::placeholders::_1));
+    // }}}
+
+    // {{{ Package management
+    _localRpcMethods.emplace("managementAptInstall", std::bind(&IpcClient::aptInstall, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementAptRemove", std::bind(&IpcClient::aptRemove, this, std::placeholders::_1));
     // }}}
 
     // {{{ Backups
@@ -107,6 +124,11 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 
     // {{{ Device description files
     _localRpcMethods.emplace("managementCopyDeviceDescriptionFile", std::bind(&IpcClient::copyDeviceDescriptionFile, this, std::placeholders::_1));
+    _localRpcMethods.emplace("managementUploadDeviceDescriptionFile", std::bind(&IpcClient::uploadDeviceDescriptionFile, this, std::placeholders::_1));
+    // }}}
+
+    // {{{ Internal
+    _localRpcMethods.emplace("managementInternalSetReadOnlyTrue", std::bind(&IpcClient::internalSetRootReadOnlyTrue, this, std::placeholders::_1));
     // }}}
 }
 
@@ -291,6 +313,20 @@ void IpcClient::onConnect()
 
         parameters = std::make_shared<Ipc::Array>();
         parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementShutdown"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementShutdown: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
         parameters->push_back(std::make_shared<Ipc::Variable>("managementSetConfigurationEntry"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
@@ -430,7 +466,7 @@ void IpcClient::onConnect()
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpdate"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
@@ -444,7 +480,7 @@ void IpcClient::onConnect()
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpgrade"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
@@ -458,7 +494,7 @@ void IpcClient::onConnect()
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptUpgradeSpecific"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
@@ -472,7 +508,7 @@ void IpcClient::onConnect()
         parameters->push_back(std::make_shared<Ipc::Variable>("managementAptFullUpgrade"));
         parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
         signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
         parameters->back()->arrayValue->push_back(signature);
         result = invoke("registerRpcMethod", parameters);
         if (result->errorStruct)
@@ -506,6 +542,40 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             Ipc::Output::printCritical("Critical: Could not register RPC method managementSystemUpdateAvailable: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+        //}}}
+
+        // {{{ Package management
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptInstall"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptInstall: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementAptRemove"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(2);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementAptRemove: " + result->structValue->at("faultString")->stringValue);
             return;
         }
         //}}}
@@ -669,6 +739,25 @@ void IpcClient::onConnect()
         if (result->errorStruct)
         {
             Ipc::Output::printCritical("Critical: Could not register RPC method managementCopyDeviceDescriptionFile: " + result->structValue->at("faultString")->stringValue);
+            return;
+        }
+
+        parameters = std::make_shared<Ipc::Array>();
+        parameters->reserve(2);
+        parameters->push_back(std::make_shared<Ipc::Variable>("managementUploadDeviceDescriptionFile"));
+        parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(4);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBinary)); //1st parameter
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //2nd parameter
+        parameters->back()->arrayValue->push_back(signature);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //3rd parameter
+        parameters->back()->arrayValue->push_back(signature);
+        result = invoke("registerRpcMethod", parameters);
+        if (result->errorStruct)
+        {
+            Ipc::Output::printCritical("Critical: Could not register RPC method managementUploadDeviceDescriptionFile: " + result->structValue->at("faultString")->stringValue);
             return;
         }
         // }}}
@@ -1122,6 +1211,21 @@ Ipc::PVariable IpcClient::reboot(Ipc::PArray& parameters)
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
+Ipc::PVariable IpcClient::shutdown(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("shutdown -H now"));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
 Ipc::PVariable IpcClient::getConfigurationEntry(Ipc::PArray& parameters)
 {
     try
@@ -1440,7 +1544,7 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("apt-get update", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("apt-get update; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1462,11 +1566,11 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
         std::ostringstream packages;
         if(parameters->at(0)->integerValue == 0)
         {
-            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -v homegear", GD::bl->fileDescriptorManager.getMax(), output);
+            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -v homegear -v node-blue-node", GD::bl->fileDescriptorManager.getMax(), output);
         }
         else if(parameters->at(0)->integerValue == 1)
         {
-            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep homegear", GD::bl->fileDescriptorManager.getMax(), output);
+            BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -e homegear -e node-blue-node", GD::bl->fileDescriptorManager.getMax(), output);
         }
         else return Ipc::Variable::createError(-1, "Parameter has invalid value.");
 
@@ -1479,7 +1583,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray& parameters)
             packages << linePair.first << ' ';
         }
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + packages.str() + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1500,7 +1604,7 @@ Ipc::PVariable IpcClient::aptUpgradeSpecific(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef -y install --only-upgrade " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1517,7 +1621,7 @@ Ipc::PVariable IpcClient::aptFullUpgrade(Ipc::PArray& parameters)
 
         if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1533,7 +1637,7 @@ Ipc::PVariable IpcClient::homegearUpdateAvailable(Ipc::PArray& parameters)
         if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
         std::string output;
-        BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep homegear/", GD::bl->fileDescriptorManager.getMax(), output);
+        BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep homegear", GD::bl->fileDescriptorManager.getMax(), output);
 
         if(output.empty()) return std::make_shared<Ipc::Variable>(false);
 
@@ -1564,6 +1668,53 @@ Ipc::PVariable IpcClient::systemUpdateAvailable(Ipc::PArray& parameters)
 
         //The exec above returns "Listing..." (count == 1) when no update is available
         return std::make_shared<Ipc::Variable>(count > 1);
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
+// {{{ Package management
+Ipc::PVariable IpcClient::aptInstall(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+
+        auto packagesWhitelist = GD::settings.packagesWhitelist();
+        if(packagesWhitelist.find(parameters->at(0)->stringValue) == packagesWhitelist.end()) return Ipc::Variable::createError(-2, "This package is not in the list of allowed packages.");
+
+        if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=\"--force-overwrite\" -y install " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::aptRemove(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+
+        auto packagesBlacklist = GD::settings.packagesBlacklist();
+        if(packagesBlacklist.find(parameters->at(0)->stringValue) != packagesBlacklist.end()) return Ipc::Variable::createError(-2, "You are not allowed to deinstall this package.");
+
+        auto packagesWhitelist = GD::settings.packagesWhitelist();
+        if(packagesWhitelist.find(parameters->at(0)->stringValue) == packagesWhitelist.end()) return Ipc::Variable::createError(-2, "This package is not in the list of allowed packages.");
+
+        if(isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
+
+        return std::make_shared<Ipc::Variable>(startCommandThread("DEBIAN_FRONTEND=noninteractive apt-get -y remove --purge " + parameters->at(0)->stringValue + " >> /tmp/apt.log 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -1630,7 +1781,7 @@ Ipc::PVariable IpcClient::systemReset(Ipc::PArray& parameters)
 {
     try
     {
-        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh 2>&1", true));
+        return std::make_shared<Ipc::Variable>(startCommandThread("chown root:root /var/lib/homegear/scripts/SystemReset.sh;chmod 750 /var/lib/homegear/scripts/SystemReset.sh;cp -a /var/lib/homegear/scripts/SystemReset.sh /;/SystemReset.sh;rm -f /SystemReset.sh 2>&1; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'", true));
     }
     catch (const std::exception& ex)
     {
@@ -2098,6 +2249,68 @@ Ipc::PVariable IpcClient::copyDeviceDescriptionFile(Ipc::PArray& parameters)
         setRootReadOnly(true);
 
         return result;
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::uploadDeviceDescriptionFile(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(parameters->size() < 3 || parameters->size() > 4) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+        if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+        if(parameters->at(1)->type != Ipc::VariableType::tBinary && parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type Binary or String.");
+        if(parameters->at(2)->type != Ipc::VariableType::tInteger && parameters->at(2)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter 3 is not of type Integer.");
+
+        BaseLib::HelperFunctions::stripNonPrintable(parameters->at(0)->stringValue);
+        auto filenamePair = BaseLib::HelperFunctions::splitLast(parameters->at(0)->stringValue, '/');
+        auto filename = filenamePair.second.empty() ? filenamePair.first : filenamePair.second;
+        auto filepath = "/etc/homegear/devices/" + std::to_string(parameters->at(2)->integerValue) + "/"+ filename;
+
+        bool isBase64 = parameters->size() > 3 && parameters->at(3)->booleanValue;
+
+        setRootReadOnly(false);
+
+        if(isBase64)
+        {
+            std::string content;
+            BaseLib::Base64::decode(parameters->at(1)->stringValue, content);
+            BaseLib::Io::writeFile(filepath, content);
+        }
+        else
+        {
+            if(parameters->at(1)->type == Ipc::VariableType::tBinary) BaseLib::Io::writeFile(filepath, parameters->at(1)->binaryValue, parameters->at(1)->binaryValue.size());
+            else BaseLib::Io::writeFile(filepath, parameters->at(1)->stringValue);
+        }
+
+        chmod(filepath.c_str(), S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+
+        setRootReadOnly(true);
+
+        return std::make_shared<Ipc::Variable>();
+    }
+    catch (const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+// }}}
+
+// {{{ Internal
+Ipc::PVariable IpcClient::internalSetRootReadOnlyTrue(Ipc::PArray& parameters)
+{
+    try
+    {
+        if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+        setRootReadOnly(true);
+
+        return std::make_shared<Ipc::Variable>();
     }
     catch (const std::exception& ex)
     {

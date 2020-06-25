@@ -91,6 +91,7 @@ private:
     Ipc::PVariable sleep(Ipc::PArray& parameters);
     Ipc::PVariable getConfigurationEntry(Ipc::PArray& parameters);
     Ipc::PVariable reboot(Ipc::PArray& parameters);
+    Ipc::PVariable shutdown(Ipc::PArray& parameters);
     Ipc::PVariable serviceCommand(Ipc::PArray& parameters);
     Ipc::PVariable setConfigurationEntry(Ipc::PArray& parameters);
     Ipc::PVariable writeCloudMaticConfig(Ipc::PArray& parameters);
@@ -114,6 +115,11 @@ private:
     Ipc::PVariable aptFullUpgrade(Ipc::PArray& parameters);
     Ipc::PVariable homegearUpdateAvailable(Ipc::PArray& parameters);
     Ipc::PVariable systemUpdateAvailable(Ipc::PArray& parameters);
+    // }}}
+
+    // {{{ Package management
+    Ipc::PVariable aptInstall(Ipc::PArray& parameters);
+    Ipc::PVariable aptRemove(Ipc::PArray& parameters);
     // }}}
 
     // {{{ Backups
@@ -190,6 +196,11 @@ private:
 
     // {{{ Device description files
     Ipc::PVariable copyDeviceDescriptionFile(Ipc::PArray& parameters);
+    Ipc::PVariable uploadDeviceDescriptionFile(Ipc::PArray& parameters);
+    // }}}
+
+    // {{{ Internal
+    Ipc::PVariable internalSetRootReadOnlyTrue(Ipc::PArray& parameters);
     // }}}
 };
 

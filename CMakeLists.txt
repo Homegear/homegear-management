@@ -10,8 +10,7 @@ set(SOURCE_FILES
         src/IpcClient.h
         src/main.cpp
         src/Settings.cpp
-        src/Settings.h
-        config.h)
+        src/Settings.h)
 
 add_custom_target(homegear-management COMMAND ../makeDebug.sh SOURCES ${SOURCE_FILES})
 
