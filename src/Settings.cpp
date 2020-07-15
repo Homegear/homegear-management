@@ -31,235 +31,183 @@
 #include "Settings.h"
 #include "GD.h"
 
-Settings::Settings()
-{
+Settings::Settings() {
 }
 
-void Settings::reset()
-{
-	_socketPath = _executablePath;
-	_runAsUser = "";
-	_runAsGroup = "";
-	_debugLevel = 3;
-	_memoryDebugging = false;
-	_enableCoreDumps = true;
-	_workingDirectory = _executablePath;
-	_logfilePath = "/var/log/homegear/";
-	_homegearDataPath = "/var/lib/homegear/";
-	_repositoryType = "stable";
-	_system = "";
-	_codename = "";
-	_secureMemorySize = 65536;
-    _maxCommandThreads = 30;
-    _allowedServiceCommands.clear();
-    _controllableServices.clear();
-	_packagesWhitelist.clear();
-	_packagesBlacklist.clear();
-    _settingsWhitelist.clear();
+void Settings::reset() {
+  _socketPath = _executablePath;
+  _runAsUser = "";
+  _runAsGroup = "";
+  _debugLevel = 3;
+  _memoryDebugging = false;
+  _enableCoreDumps = true;
+  _workingDirectory = _executablePath;
+  _logfilePath = "/var/log/homegear/";
+  _homegearDataPath = "/var/lib/homegear/";
+  _repositoryType = "stable";
+  _system = "";
+  _codename = "";
+  _secureMemorySize = 65536;
+  _maxCommandThreads = 30;
+  _allowedServiceCommands.clear();
+  _controllableServices.clear();
+  _packagesWhitelist.clear();
+  _packagesBlacklist.clear();
+  _settingsWhitelist.clear();
 }
 
-bool Settings::changed()
-{
-	if(GD::bl->io.getFileLastModifiedTime(_path) != _lastModified)
-	{
-		return true;
-	}
-	return false;
+bool Settings::changed() {
+  if (GD::bl->io.getFileLastModifiedTime(_path) != _lastModified) {
+    return true;
+  }
+  return false;
 }
 
-void Settings::load(std::string filename, std::string executablePath)
-{
-	constexpr std::array<const char*, 31> blackList {{"wget", "libsqlite3-0", "libreadline7", "libreadline6", "adduser", "libgcrypt20", "libgnutlsxx28", "libgpg-error0", "unzip", "p7zip-full", "procps", "libxslt1.1", "libedit2", "libenchant1c2a", "libqdbm14", "libltdl7", "zlib1g", "libtinfo5", "libtinfo6", "libgmp10", "libxml2", "libssl1.1", "libssl1.0.0", "openssl", "libcurl3-gnutls", "zlib1g", "libicu52", "libicu55", "libicu57", "libicu60", "libicu63"}};
+void Settings::load(std::string filename, std::string executablePath) {
+  constexpr std::array<const char *, 31> blackList
+      {{"wget", "libsqlite3-0", "libreadline7", "libreadline6", "adduser", "libgcrypt20", "libgnutlsxx28",
+        "libgpg-error0", "unzip", "p7zip-full", "procps", "libxslt1.1", "libedit2", "libenchant1c2a", "libqdbm14",
+        "libltdl7", "zlib1g", "libtinfo5", "libtinfo6", "libgmp10", "libxml2", "libssl1.1", "libssl1.0.0", "openssl",
+        "libcurl3-gnutls", "zlib1g", "libicu52", "libicu55", "libicu57", "libicu60", "libicu63"}};
 
-	try
-	{
-		_executablePath = executablePath;
-		reset();
-		_path = filename;
-		char input[1024];
-		FILE *fin;
-		int32_t len, ptr;
-		bool found = false;
+  try {
+    _executablePath = executablePath;
+    reset();
+    _path = filename;
+    char input[1024];
+    FILE *fin;
+    int32_t len, ptr;
+    bool found = false;
 
-		if (!(fin = fopen(filename.c_str(), "r")))
-		{
-			GD::bl->out.printError("Unable to open config file: " + filename + ". " + strerror(errno));
-			return;
-		}
-
-	    for(auto& element : blackList)
-    	{
-        	_packagesBlacklist.emplace(element);
-    	}
-    	GD::bl->out.printDebug("Debug: packagesBlacklist was set");
-
-		while (fgets(input, 1024, fin))
-		{
-			if(input[0] == '#') continue;
-			len = strlen(input);
-			if (len < 2) continue;
-			if (input[len-1] == '\n') input[len-1] = '\0';
-			ptr = 0;
-			found = false;
-			while(ptr < len)
-			{
-				if (input[ptr] == '=')
-				{
-					found = true;
-					input[ptr++] = '\0';
-					break;
-				}
-				ptr++;
-			}
-			if(found)
-			{
-				std::string name(input);
-				BaseLib::HelperFunctions::toLower(name);
-				BaseLib::HelperFunctions::trim(name);
-				std::string value(&input[ptr]);
-				BaseLib::HelperFunctions::trim(value);
-				if(name == "socketpath")
-				{
-					_socketPath = value;
-					if(_socketPath.empty()) _socketPath = _executablePath;
-                    if(_socketPath.back() != '/') _socketPath.push_back('/');
-					GD::bl->out.printDebug("Debug: socketPath set to " + _socketPath);
-				}
-				else if(name == "runasuser")
-				{
-					_runAsUser = value;
-					GD::bl->out.printDebug("Debug: runAsUser set to " + _runAsUser);
-				}
-				else if(name == "runasgroup")
-				{
-					_runAsGroup = value;
-					GD::bl->out.printDebug("Debug: runAsGroup set to " + _runAsGroup);
-				}
-				else if(name == "debuglevel")
-				{
-					_debugLevel = BaseLib::Math::getNumber(value);
-					if(_debugLevel < 0) _debugLevel = 3;
-					GD::bl->debugLevel = _debugLevel;
-					GD::bl->out.printDebug("Debug: debugLevel set to " + std::to_string(_debugLevel));
-				}
-				else if(name == "memorydebugging")
-				{
-					if(BaseLib::HelperFunctions::toLower(value) == "true") _memoryDebugging = true;
-					GD::bl->out.printDebug("Debug: memoryDebugging set to " + std::to_string(_memoryDebugging));
-				}
-				else if(name == "enablecoredumps")
-				{
-					if(BaseLib::HelperFunctions::toLower(value) == "false") _enableCoreDumps = false;
-					GD::bl->out.printDebug("Debug: enableCoreDumps set to " + std::to_string(_enableCoreDumps));
-				}
-				else if(name == "workingdirectory")
-				{
-					_workingDirectory = value;
-					if(_workingDirectory.empty()) _workingDirectory = _executablePath;
-					if(_workingDirectory.back() != '/') _workingDirectory.push_back('/');
-					GD::bl->out.printDebug("Debug: workingDirectory set to " + _workingDirectory);
-				}
-				else if(name == "logfilepath")
-				{
-					_logfilePath = value;
-					if(_logfilePath.empty()) _logfilePath = "/var/log/homegear/";
-					if(_logfilePath.back() != '/') _logfilePath.push_back('/');
-					GD::bl->out.printDebug("Debug: logfilePath set to " + _logfilePath);
-				}
-                else if(name == "homegeardatapath")
-                {
-                    _homegearDataPath = value;
-                    if(_homegearDataPath.empty()) _homegearDataPath = "/var/lib/homegear/";
-                    if(_homegearDataPath.back() != '/') _homegearDataPath.push_back('/');
-                    GD::bl->out.printDebug("Debug: homegearDataPath set to " + _homegearDataPath);
-                }
-                else if(name == "repositorytype")
-                {
-                    _repositoryType = BaseLib::HelperFunctions::toLower(value);
-                    GD::bl->out.printDebug("Debug: repositoryType set to " + _repositoryType);
-                }
-                else if(name == "system")
-                {
-                    _system = BaseLib::HelperFunctions::toLower(value);
-                    if(!_system.empty()) _system.at(0) = std::toupper(_system.at(0));
-                    GD::bl->out.printDebug("Debug: system set to " + _repositoryType);
-                }
-                else if(name == "codename")
-                {
-                    _codename = BaseLib::HelperFunctions::toLower(value);
-                    GD::bl->out.printDebug("Debug: codename set to " + _repositoryType);
-                }
-                else if(name == "rootisreadonly")
-                {
-                    _rootIsReadOnly = (value == "true");
-                    GD::bl->out.printDebug("Debug: rootIsReadOnly set to " + std::to_string(_rootIsReadOnly));
-                }
-				else if(name == "securememorysize")
-				{
-					_secureMemorySize = BaseLib::Math::getNumber(value);
-					//Allow 0 => disable secure memory. 16384 is minimum size. Values smaller than 16384 are set to 16384 by gcrypt: https://gnupg.org/documentation/manuals/gcrypt-devel/Controlling-the-library.html
-					if(_secureMemorySize < 0) _secureMemorySize = 1;
-					GD::bl->out.printDebug("Debug: secureMemorySize set to " + std::to_string(_secureMemorySize));
-				}
-                else if(name == "maxcommandthreads")
-                {
-                    _maxCommandThreads = BaseLib::Math::getNumber(value);
-                    if(_maxCommandThreads < 1) _maxCommandThreads = 1;
-                    GD::bl->out.printDebug("Debug: maxCommandThreads set to " + std::to_string(_maxCommandThreads));
-                }
-                else if(name == "allowedservicecommands")
-                {
-                    std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
-                    for(auto& element : elements)
-                    {
-                        GD::bl->hf.trim(element);
-                        _allowedServiceCommands.emplace(element);
-                    }
-                    GD::bl->out.printDebug("Debug: allowedServiceCommands was set");
-                }
-                else if(name == "controllableservices")
-                {
-                    std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
-                    for(auto& element : elements)
-                    {
-                        GD::bl->hf.trim(element);
-                        _controllableServices.emplace(element);
-                    }
-                    GD::bl->out.printDebug("Debug: controllableServices was set");
-                }
-                else if(name == "packageswhitelist")
-                {
-                    std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
-                    for(auto& element : elements)
-                    {
-                        GD::bl->hf.trim(element);
-                        _packagesWhitelist.emplace(element);
-                    }
-                    GD::bl->out.printDebug("Debug: packagesWhitelist was set");
-                }
-                else if(name == "settingswhitelist")
-                {
-                    std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
-                    GD::bl->hf.trim(elements.at(0));
-                    for(uint32_t i = 0; i < elements.size(); i++)
-                    {
-                        GD::bl->hf.trim(elements.at(i));
-                        _settingsWhitelist[elements.at(0)].emplace(elements.at(i));
-                    }
-                    GD::bl->out.printDebug("Debug: controllableServices was set");
-                }
-				else
-				{
-					GD::bl->out.printWarning("Warning: Setting not found: " + std::string(input));
-				}
-			}
-		}
-
-		fclose(fin);
-		_lastModified = GD::bl->io.getFileLastModifiedTime(filename);
-	}
-	catch(const std::exception& ex)
-    {
-		GD::bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    if (!(fin = fopen(filename.c_str(), "r"))) {
+      GD::bl->out.printError("Unable to open config file: " + filename + ". " + strerror(errno));
+      return;
     }
+
+    for (auto &element : blackList) {
+      _packagesBlacklist.emplace(element);
+    }
+    GD::bl->out.printDebug("Debug: packagesBlacklist was set");
+
+    while (fgets(input, 1024, fin)) {
+      if (input[0] == '#') continue;
+      len = strlen(input);
+      if (len < 2) continue;
+      if (input[len - 1] == '\n') input[len - 1] = '\0';
+      ptr = 0;
+      found = false;
+      while (ptr < len) {
+        if (input[ptr] == '=') {
+          found = true;
+          input[ptr++] = '\0';
+          break;
+        }
+        ptr++;
+      }
+      if (found) {
+        std::string name(input);
+        BaseLib::HelperFunctions::toLower(name);
+        BaseLib::HelperFunctions::trim(name);
+        std::string value(&input[ptr]);
+        BaseLib::HelperFunctions::trim(value);
+        if (name == "socketpath") {
+          _socketPath = value;
+          if (_socketPath.empty()) _socketPath = _executablePath;
+          if (_socketPath.back() != '/') _socketPath.push_back('/');
+          GD::bl->out.printDebug("Debug: socketPath set to " + _socketPath);
+        } else if (name == "runasuser") {
+          _runAsUser = value;
+          GD::bl->out.printDebug("Debug: runAsUser set to " + _runAsUser);
+        } else if (name == "runasgroup") {
+          _runAsGroup = value;
+          GD::bl->out.printDebug("Debug: runAsGroup set to " + _runAsGroup);
+        } else if (name == "debuglevel") {
+          _debugLevel = BaseLib::Math::getNumber(value);
+          if (_debugLevel < 0) _debugLevel = 3;
+          GD::bl->debugLevel = _debugLevel;
+          GD::bl->out.printDebug("Debug: debugLevel set to " + std::to_string(_debugLevel));
+        } else if (name == "memorydebugging") {
+          if (BaseLib::HelperFunctions::toLower(value) == "true") _memoryDebugging = true;
+          GD::bl->out.printDebug("Debug: memoryDebugging set to " + std::to_string(_memoryDebugging));
+        } else if (name == "enablecoredumps") {
+          if (BaseLib::HelperFunctions::toLower(value) == "false") _enableCoreDumps = false;
+          GD::bl->out.printDebug("Debug: enableCoreDumps set to " + std::to_string(_enableCoreDumps));
+        } else if (name == "workingdirectory") {
+          _workingDirectory = value;
+          if (_workingDirectory.empty()) _workingDirectory = _executablePath;
+          if (_workingDirectory.back() != '/') _workingDirectory.push_back('/');
+          GD::bl->out.printDebug("Debug: workingDirectory set to " + _workingDirectory);
+        } else if (name == "logfilepath") {
+          _logfilePath = value;
+          if (_logfilePath.empty()) _logfilePath = "/var/log/homegear/";
+          if (_logfilePath.back() != '/') _logfilePath.push_back('/');
+          GD::bl->out.printDebug("Debug: logfilePath set to " + _logfilePath);
+        } else if (name == "homegeardatapath") {
+          _homegearDataPath = value;
+          if (_homegearDataPath.empty()) _homegearDataPath = "/var/lib/homegear/";
+          if (_homegearDataPath.back() != '/') _homegearDataPath.push_back('/');
+          GD::bl->out.printDebug("Debug: homegearDataPath set to " + _homegearDataPath);
+        } else if (name == "repositorytype") {
+          _repositoryType = BaseLib::HelperFunctions::toLower(value);
+          GD::bl->out.printDebug("Debug: repositoryType set to " + _repositoryType);
+        } else if (name == "system") {
+          _system = BaseLib::HelperFunctions::toLower(value);
+          if (!_system.empty()) _system.at(0) = std::toupper(_system.at(0));
+          GD::bl->out.printDebug("Debug: system set to " + _repositoryType);
+        } else if (name == "codename") {
+          _codename = BaseLib::HelperFunctions::toLower(value);
+          GD::bl->out.printDebug("Debug: codename set to " + _repositoryType);
+        } else if (name == "rootisreadonly") {
+          _rootIsReadOnly = (value == "true");
+          GD::bl->out.printDebug("Debug: rootIsReadOnly set to " + std::to_string(_rootIsReadOnly));
+        } else if (name == "securememorysize") {
+          _secureMemorySize = BaseLib::Math::getNumber(value);
+          //Allow 0 => disable secure memory. 16384 is minimum size. Values smaller than 16384 are set to 16384 by gcrypt: https://gnupg.org/documentation/manuals/gcrypt-devel/Controlling-the-library.html
+          if (_secureMemorySize < 0) _secureMemorySize = 1;
+          GD::bl->out.printDebug("Debug: secureMemorySize set to " + std::to_string(_secureMemorySize));
+        } else if (name == "maxcommandthreads") {
+          _maxCommandThreads = BaseLib::Math::getNumber(value);
+          if (_maxCommandThreads < 1) _maxCommandThreads = 1;
+          GD::bl->out.printDebug("Debug: maxCommandThreads set to " + std::to_string(_maxCommandThreads));
+        } else if (name == "allowedservicecommands") {
+          std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
+          for (auto &element : elements) {
+            GD::bl->hf.trim(element);
+            _allowedServiceCommands.emplace(element);
+          }
+          GD::bl->out.printDebug("Debug: allowedServiceCommands was set");
+        } else if (name == "controllableservices") {
+          std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
+          for (auto &element : elements) {
+            GD::bl->hf.trim(element);
+            _controllableServices.emplace(element);
+          }
+          GD::bl->out.printDebug("Debug: controllableServices was set");
+        } else if (name == "packageswhitelist") {
+          std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
+          for (auto &element : elements) {
+            GD::bl->hf.trim(element);
+            _packagesWhitelist.emplace(element);
+          }
+          GD::bl->out.printDebug("Debug: packagesWhitelist was set");
+        } else if (name == "settingswhitelist") {
+          std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
+          GD::bl->hf.trim(elements.at(0));
+          for (uint32_t i = 0; i < elements.size(); i++) {
+            GD::bl->hf.trim(elements.at(i));
+            _settingsWhitelist[elements.at(0)].emplace(elements.at(i));
+          }
+          GD::bl->out.printDebug("Debug: controllableServices was set");
+        } else {
+          GD::bl->out.printWarning("Warning: Setting not found: " + std::string(input));
+        }
+      }
+    }
+
+    fclose(fin);
+    _lastModified = GD::bl->io.getFileLastModifiedTime(filename);
+  }
+  catch (const std::exception &ex) {
+    GD::bl->out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+  }
 }
