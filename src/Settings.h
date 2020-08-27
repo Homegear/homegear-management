@@ -33,58 +33,59 @@
 
 #include <homegear-base/BaseLib.h>
 
-class Settings
-{
-public:
-	Settings();
-	virtual ~Settings() {}
-	void load(std::string filename, std::string executablePath);
-	bool changed();
+class Settings {
+ public:
+  Settings();
+  virtual ~Settings() {}
+  void load(std::string filename, std::string executablePath);
+  bool changed();
 
-	std::string socketPath() { return _socketPath; }
-	std::string runAsUser() { return _runAsUser; }
-	std::string runAsGroup() { return _runAsGroup; }
-	int32_t debugLevel() { return _debugLevel; }
-	bool memoryDebugging() { return _memoryDebugging; }
-	bool enableCoreDumps() { return _enableCoreDumps; };
-	std::string workingDirectory() { return _workingDirectory; }
-	std::string logfilePath() { return _logfilePath; }
-    std::string homegearDataPath() { return _homegearDataPath; }
-    bool rootIsReadOnly() { return _rootIsReadOnly; }
-	uint32_t secureMemorySize() { return _secureMemorySize; }
-	std::string repositoryType() { return _repositoryType; }
-    std::string system() { return _system; }
-    std::string codename() { return _codename; }
-    int32_t maxCommandThreads() { return _maxCommandThreads; }
-    std::unordered_set<std::string> allowedServiceCommands() { return _allowedServiceCommands; }
-    std::unordered_set<std::string> controllableServices() { return _controllableServices; }
-	std::unordered_set<std::string> packagesWhitelist() { return _packagesWhitelist; }
-	std::unordered_map<std::string, std::unordered_set<std::string>>& settingsWhitelist() { return _settingsWhitelist; }
-private:
-	std::string _executablePath;
-	std::string _path;
-	int32_t _lastModified = -1;
+  std::string socketPath() { return _socketPath; }
+  std::string runAsUser() { return _runAsUser; }
+  std::string runAsGroup() { return _runAsGroup; }
+  int32_t debugLevel() { return _debugLevel; }
+  bool memoryDebugging() { return _memoryDebugging; }
+  bool enableCoreDumps() { return _enableCoreDumps; };
+  std::string workingDirectory() { return _workingDirectory; }
+  std::string logfilePath() { return _logfilePath; }
+  std::string homegearDataPath() { return _homegearDataPath; }
+  bool rootIsReadOnly() { return _rootIsReadOnly; }
+  uint32_t secureMemorySize() { return _secureMemorySize; }
+  std::string repositoryType() { return _repositoryType; }
+  std::string system() { return _system; }
+  std::string codename() { return _codename; }
+  int32_t maxCommandThreads() { return _maxCommandThreads; }
+  std::unordered_set<std::string> allowedServiceCommands() { return _allowedServiceCommands; }
+  std::unordered_set<std::string> controllableServices() { return _controllableServices; }
+  std::unordered_set<std::string> packagesWhitelist() { return _packagesWhitelist; }
+  std::unordered_set<std::string> packagesBlacklist() { return _packagesBlacklist; }
+  std::unordered_map<std::string, std::unordered_set<std::string>> &settingsWhitelist() { return _settingsWhitelist; }
+ private:
+  std::string _executablePath;
+  std::string _path;
+  int32_t _lastModified = -1;
 
-	std::string _socketPath;
-	std::string _runAsUser;
-	std::string _runAsGroup;
-	int32_t _debugLevel = 3;
-	bool _memoryDebugging = false;
-	bool _enableCoreDumps = true;
-	std::string _workingDirectory;
-	std::string _logfilePath;
-	std::string _homegearDataPath;
-	std::string _system;
-    std::string _codename;
-    bool _rootIsReadOnly = false;
-	uint32_t _secureMemorySize = 65536;
-    std::string _repositoryType;
-    int32_t _maxCommandThreads = 30;
-    std::unordered_set<std::string> _allowedServiceCommands;
-    std::unordered_set<std::string> _controllableServices;
-    std::unordered_set<std::string> _packagesWhitelist;
-    std::unordered_map<std::string, std::unordered_set<std::string>> _settingsWhitelist;
+  std::string _socketPath;
+  std::string _runAsUser;
+  std::string _runAsGroup;
+  int32_t _debugLevel = 3;
+  bool _memoryDebugging = false;
+  bool _enableCoreDumps = true;
+  std::string _workingDirectory;
+  std::string _logfilePath;
+  std::string _homegearDataPath;
+  std::string _system;
+  std::string _codename;
+  bool _rootIsReadOnly = false;
+  uint32_t _secureMemorySize = 65536;
+  std::string _repositoryType;
+  int32_t _maxCommandThreads = 30;
+  std::unordered_set<std::string> _allowedServiceCommands;
+  std::unordered_set<std::string> _controllableServices;
+  std::unordered_set<std::string> _packagesWhitelist;
+  std::unordered_set<std::string> _packagesBlacklist;
+  std::unordered_map<std::string, std::unordered_set<std::string>> _settingsWhitelist;
 
-	void reset();
+  void reset();
 };
 #endif
