@@ -767,6 +767,25 @@ void IpcClient::onConnect() {
                                      + result->structValue->at("faultString")->stringValue);
       return;
     }
+
+    parameters = std::make_shared<Ipc::Array>();
+    parameters->reserve(2);
+    parameters->push_back(std::make_shared<Ipc::Variable>("managementInternalSetReadOnlyTrue"));
+    parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+    signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+    signature->arrayValue->reserve(4);
+    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //Return value
+    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBinary)); //1st parameter
+    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger)); //2nd parameter
+    parameters->back()->arrayValue->push_back(signature);
+    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //3rd parameter
+    parameters->back()->arrayValue->push_back(signature);
+    result = invoke("registerRpcMethod", parameters);
+    if (result->errorStruct) {
+      Ipc::Output::printCritical("Critical: Could not register RPC method managementUploadDeviceDescriptionFile: "
+                                     + result->structValue->at("faultString")->stringValue);
+      return;
+    }
     // }}}
 
     // {{{ Get Homegear's PID
