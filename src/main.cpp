@@ -392,7 +392,7 @@ void startUp() {
     GD::ipcClient.reset(new IpcClient(GD::settings.socketPath() + "homegearIPC.sock"));
     GD::ipcClient->start();
 
-    BaseLib::ProcessManager::startSignalHandler(); //Needs to be called before starting any threads
+    BaseLib::ProcessManager::startSignalHandler(GD::bl->threadManager); //Needs to be called before starting any threads
     GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
 
     GD::out.printMessage("Startup complete.");
