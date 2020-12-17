@@ -34,7 +34,9 @@
 
 #include <malloc.h>
 #include <sys/prctl.h> //For function prctl
+#ifdef BSDSYSTEM
 #include <sys/sysctl.h> //For BSD systems
+#endif
 #include <sys/resource.h> //getrlimit, setrlimit
 #include <sys/file.h> //flock
 #include <sys/types.h>
@@ -514,6 +516,7 @@ int main(int argc, char *argv[]) {
     // {{{ Load settings
     GD::out.printInfo("Loading settings from " + GD::configPath + "management.conf");
     GD::settings.load(GD::configPath + "management.conf", GD::executablePath);
+    GD::bl->settings.load(GD::configPath + "main.conf", GD::executablePath);
     if (GD::runAsUser.empty()) GD::runAsUser = GD::settings.runAsUser();
     if (GD::runAsGroup.empty()) GD::runAsGroup = GD::settings.runAsGroup();
     if ((!GD::runAsUser.empty() && GD::runAsGroup.empty()) || (!GD::runAsGroup.empty() && GD::runAsUser.empty())) {

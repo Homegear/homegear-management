@@ -8,6 +8,6 @@ Homepage: https://homegear.eu
 
 Package: homegear-management
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libhomegear-base (= <BASELIBVER>), libhomegear-ipc, libgcrypt20, libgnutlsxx28, libgpg-error0 (>= 1.10), procps, lsof, lsb-release
+Depends: ${shlibs:Depends}, ${misc:Depends}, libhomegear-base (= <BASELIBVER>), libhomegear-ipc, libgcrypt20, libgnutlsxx28, libgpg-error0 (>= 1.10), procps, lsof, wget, lsb-release
 Description: Management service for Homegear
  Management service for root operations.

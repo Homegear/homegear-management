@@ -397,14 +397,10 @@ void IpcClient::onConnect() {
     signatures->arrayValue->reserve(2);
     parameters->push_back(signatures); //Outer array
     signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-    signature->arrayValue->reserve(2);
+    signature->arrayValue->reserve(3);
     signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
     signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
-    signatures->arrayValue->push_back(signature);
-    signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-    signature->arrayValue->reserve(2);
-    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
-    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray));
+    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
     signatures->arrayValue->push_back(signature);
     result = invoke("registerRpcMethod", parameters);
     if (result->errorStruct) {
@@ -1434,49 +1430,63 @@ Ipc::PVariable IpcClient::setUserPassword(Ipc::PArray &parameters) {
 // {{{ Node management
 Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
   try {
-    if (parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
-    if (parameters->at(0)->type != Ipc::VariableType::tString
-        && parameters->at(0)->type != Ipc::VariableType::tArray)
-      return Ipc::Variable::createError(-1, "Parameter 1 is not of type String or Array.");
+    if (parameters->size() != 2) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+    if (parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
+    if (parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type String.");
 
-    std::string nodeNames;
-    if (parameters->at(0)->type == Ipc::VariableType::tString) {
-      BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
-      nodeNames = "node-blue-node-" + parameters->at(0)->stringValue;
-    } else {
-      for (auto &entry : *parameters->at(0)->arrayValue) {
-        BaseLib::HelperFunctions::stripNonAlphaNumeric(entry->stringValue);
-        nodeNames += "node-blue-node-" + entry->stringValue + " ";
+    auto module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+    auto url = BaseLib::HelperFunctions::stringReplace(parameters->at(1)->stringValue, "'", ""); //Remove quotes for security reasons - below the URL is surrounded by quotes.
+
+    auto nodesPath = GD::bl->settings.nodeBluePath() + "nodes/";
+    auto tempPath = nodesPath + BaseLib::HelperFunctions::getHexString(BaseLib::HelperFunctions::getRandomBytes(32)) + "/";
+    std::string output;
+
+    setRootReadOnly(false);
+
+    try {
+      BaseLib::Io::createDirectory(tempPath, S_IRWXU | S_IRWXG);
+
+      auto packagePath = tempPath + module + ".tar.gz";
+      if (BaseLib::ProcessManager::exec("wget -O '" + packagePath + "' '" + url + "'", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+        setRootReadOnly(true);
+        return Ipc::Variable::createError(-2, "Could not download node package: " + output);
       }
+
+      if (BaseLib::ProcessManager::exec("tar -C '" + tempPath + "' -zxf '" + packagePath + "'", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+        setRootReadOnly(true);
+        return Ipc::Variable::createError(-3, "Could not extract node package: " + output);
+      }
+
+      BaseLib::Io::deleteFile(packagePath);
+
+      auto directories = BaseLib::Io::getDirectories(tempPath, false);
+      if (directories.empty()) {
+        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+        setRootReadOnly(true);
+        return Ipc::Variable::createError(-3, "Could not find node directory in archive: " + output);
+      }
+
+      auto directory = BaseLib::HelperFunctions::stripNonAlphaNumeric(directories.front());
+
+      if (BaseLib::ProcessManager::exec("mv \"" + tempPath + directory + "\" \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+        setRootReadOnly(true);
+        return Ipc::Variable::createError(-4, "Could not move node package: " + output);
+      }
+
+      BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+    } catch (const std::exception &ex) {
+      GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+      BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+      setRootReadOnly(true);
+      return Ipc::Variable::createError(-32500, "Unknown application error.");
     }
 
-    std::string system;
-    {
-      if (GD::settings.system().empty()) {
-        std::string output;
-        auto commandStatus = BaseLib::ProcessManager::exec("lsb_release -i -s | tr '[:upper:]' '[:lower:]'",
-                                                           GD::bl->fileDescriptorManager.getMax(),
-                                                           output);
-        if (commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
-        system = BaseLib::HelperFunctions::trim(output);
-      } else system = GD::settings.system();
-    }
+    setRootReadOnly(true);
 
-    std::string codename;
-    {
-      if (GD::settings.codename().empty()) {
-        std::string output;
-        auto commandStatus =
-            BaseLib::ProcessManager::exec("lsb_release -c -s", GD::bl->fileDescriptorManager.getMax(), output);
-        if (commandStatus != 0) return Ipc::Variable::createError(-32500, "Unknown application error.");
-        codename = BaseLib::HelperFunctions::trim(output);
-      } else codename = GD::settings.codename();
-    }
-
-    return std::make_shared<Ipc::Variable>(startCommandThread(
-        "echo \"deb https://apt.node-blue.com/" + GD::settings.repositoryType() + "/" + system + "/ " + codename
-            + "/\" > /etc/apt/sources.list.d/node-blue-nodes.list; DEBIAN_FRONTEND=noninteractive apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -f install; DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=\"--force-overwrite\" -y install "
-            + nodeNames));
+    return std::make_shared<Ipc::Variable>();
   }
   catch (const std::exception &ex) {
     GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
@@ -1569,9 +1579,7 @@ Ipc::PVariable IpcClient::aptUpdate(Ipc::PArray &parameters) {
 
     if (isAptRunning()) return Ipc::Variable::createError(1, "apt is already being executed.");
 
-    return std::make_shared<Ipc::Variable>(startCommandThread(
-        "apt-get update; sleep 60; /usr/bin/homegear -e rc '$hg->managementInternalSetReadOnlyTrue();'",
-        true));
+    return std::make_shared<Ipc::Variable>(startCommandThread("apt-get update", false));
   }
   catch (const std::exception &ex) {
     GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
