@@ -1599,7 +1599,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray &parameters) {
     std::string output;
     std::ostringstream packages;
     if (parameters->at(0)->integerValue == 0) {
-      BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null | grep -v homegear -v node-blue-node",
+      BaseLib::ProcessManager::exec("apt list --upgradable 2>/dev/null |grep -v homegear |grep -v node-blue-node",
                                     GD::bl->fileDescriptorManager.getMax(),
                                     output);
     } else if (parameters->at(0)->integerValue == 1) {
