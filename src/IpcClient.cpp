@@ -413,17 +413,11 @@ void IpcClient::onConnect() {
     parameters->reserve(2);
     parameters->push_back(std::make_shared<Ipc::Variable>("managementUninstallNode"));
     signatures = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
-    signatures->arrayValue->reserve(2);
     parameters->push_back(signatures); //Outer array
     signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
     signature->arrayValue->reserve(2);
     signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
     signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString));
-    signatures->arrayValue->push_back(signature);
-    signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
-    signature->arrayValue->reserve(2);
-    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
-    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray));
     signatures->arrayValue->push_back(signature);
     result = invoke("registerRpcMethod", parameters);
     if (result->errorStruct) {
@@ -1497,25 +1491,28 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
 Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray &parameters) {
   try {
     if (parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
-    if (parameters->at(0)->type != Ipc::VariableType::tString
-        && parameters->at(0)->type != Ipc::VariableType::tArray)
-      return Ipc::Variable::createError(-1, "Parameter 1 is not of type String or Array.");
+    if (parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
 
-    std::string nodeNames;
-    if (parameters->at(0)->type == Ipc::VariableType::tString) {
-      BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
-      nodeNames =
-          parameters->at(0)->stringValue.compare(0, 15, "node-blue-node-") == 0 ? parameters->at(0)->stringValue :
-          "node-blue-node-" + parameters->at(0)->stringValue;
-    } else {
-      for (auto &entry : *parameters->at(0)->arrayValue) {
-        BaseLib::HelperFunctions::stripNonAlphaNumeric(entry->stringValue);
-        nodeNames += (entry->stringValue.compare(0, 15, "node-blue-node-") == 0 ? entry->stringValue : "node-blue-node-"
-            + parameters->at(0)->stringValue) + " ";
+    auto module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+    auto nodesPath = GD::bl->settings.nodeBluePath() + "nodes/";
+
+    setRootReadOnly(false);
+
+    try {
+      std::string output;
+      if (BaseLib::ProcessManager::exec("rm -Rf \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+        setRootReadOnly(true);
+        return Ipc::Variable::createError(-1, "Could not remove module.");
       }
+    } catch (const std::exception &ex) {
+      GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+      setRootReadOnly(true);
+      return Ipc::Variable::createError(-32500, "Unknown application error.");
     }
 
-    return std::make_shared<Ipc::Variable>(startCommandThread("dpkg --purge " + nodeNames));
+    setRootReadOnly(true);
+
+    return std::make_shared<Ipc::Variable>();
   }
   catch (const std::exception &ex) {
     GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
