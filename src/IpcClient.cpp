@@ -1438,7 +1438,9 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
     setRootReadOnly(false);
 
     try {
-      BaseLib::Io::createDirectory(tempPath, S_IRWXU | S_IRWXG);
+      if (!BaseLib::Io::createDirectory(tempPath, S_IRWXU | S_IRWXG)) {
+        return Ipc::Variable::createError(-1, "Could not create temporary directory.");
+      }
 
       auto packagePath = tempPath + module + ".tar.gz";
       if (BaseLib::ProcessManager::exec("wget -O '" + packagePath + "' '" + url + "'", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
@@ -1481,7 +1483,15 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
       return Ipc::Variable::createError(-32500, "Unknown application error.");
     }
 
-    setRootReadOnly(true);
+    //{{{ Compile if necessary
+    auto modulePath = nodesPath + module + "/";
+    if (BaseLib::Io::fileExists(modulePath + "CMakeLists.txt")) {
+      BaseLib::Io::writeFile(modulePath + ".compiling", "");
+      setRootReadOnly(true);
+      startCommandThread("mkdir \"" + modulePath + "build\"; cd \"" + modulePath + "build" + "\"; cmake ..; make -j; sleep 10; cd ..; rm -Rf build; rm .compiling", false);
+    }
+      //}}}
+    else setRootReadOnly(true);
 
     return std::make_shared<Ipc::Variable>();
   }
