@@ -1432,66 +1432,85 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
     auto url = BaseLib::HelperFunctions::stringReplace(parameters->at(1)->stringValue, "'", ""); //Remove quotes for security reasons - below the URL is surrounded by quotes.
 
     auto nodesPath = GD::bl->settings.nodeBluePath() + "nodes/";
-    auto tempPath = nodesPath + BaseLib::HelperFunctions::getHexString(BaseLib::HelperFunctions::getRandomBytes(32)) + "/";
-    std::string output;
 
-    setRootReadOnly(false);
+    if (url.at(0) == '/') {
+      //Local upload
+      setRootReadOnly(false);
 
-    try {
-      if (!BaseLib::Io::createDirectory(tempPath, S_IRWXU | S_IRWXG)) {
-        return Ipc::Variable::createError(-1, "Could not create temporary directory.");
-      }
+      auto tempPath = parameters->at(1)->stringValue;
+      std::string output;
 
-      auto packagePath = tempPath + module + ".tar.gz";
-      if (BaseLib::ProcessManager::exec("wget -O '" + packagePath + "' '" + url + "'", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
-        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
-        setRootReadOnly(true);
-        return Ipc::Variable::createError(-2, "Could not download node package: " + output);
-      }
-
-      if (BaseLib::ProcessManager::exec("tar -C '" + tempPath + "' -zxf '" + packagePath + "'", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
-        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
-        setRootReadOnly(true);
-        return Ipc::Variable::createError(-3, "Could not extract node package: " + output);
-      }
-
-      BaseLib::Io::deleteFile(packagePath);
-
-      auto directories = BaseLib::Io::getDirectories(tempPath, false);
-      if (directories.empty()) {
-        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
-        setRootReadOnly(true);
-        return Ipc::Variable::createError(-3, "Could not find node directory in archive: " + output);
-      }
-
-      auto directory = BaseLib::HelperFunctions::stripNonAlphaNumeric(directories.front());
-
-      //Delete old version of module, if it exists (this method is also called for module updates)
-      BaseLib::ProcessManager::exec("rm -Rf \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output);
-
-      if (BaseLib::ProcessManager::exec("mv \"" + tempPath + directory + "\" \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+      if (BaseLib::ProcessManager::exec("mv \"" + tempPath + module + "\" \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
         setRootReadOnly(true);
         return Ipc::Variable::createError(-4, "Could not move node package: " + output);
       }
 
       BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
-    } catch (const std::exception &ex) {
-      GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-      BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
-      setRootReadOnly(true);
-      return Ipc::Variable::createError(-32500, "Unknown application error.");
-    }
 
-    //{{{ Compile if necessary
-    auto modulePath = nodesPath + module + "/";
-    if (BaseLib::Io::fileExists(modulePath + "CMakeLists.txt")) {
-      BaseLib::Io::writeFile(modulePath + ".compiling", "");
       setRootReadOnly(true);
-      startCommandThread("mkdir \"" + modulePath + "build\"; cd \"" + modulePath + "build" + "\"; cmake ..; make -j; sleep 10; cd ..; rm -Rf build; rm .compiling", false);
+    } else {
+      auto tempPath = nodesPath + BaseLib::HelperFunctions::getHexString(BaseLib::HelperFunctions::getRandomBytes(32)) + "/";
+      std::string output;
+
+      setRootReadOnly(false);
+
+      try {
+        if (!BaseLib::Io::createDirectory(tempPath, S_IRWXU | S_IRWXG)) {
+          return Ipc::Variable::createError(-1, "Could not create temporary directory.");
+        }
+
+        auto packagePath = tempPath + module + ".tar.gz";
+        if (BaseLib::ProcessManager::exec("wget -O '" + packagePath + "' '" + url + "'", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+          BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+          setRootReadOnly(true);
+          return Ipc::Variable::createError(-2, "Could not download node package: " + output);
+        }
+
+        if (BaseLib::ProcessManager::exec("tar -C '" + tempPath + "' -zxf '" + packagePath + "'", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+          BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+          setRootReadOnly(true);
+          return Ipc::Variable::createError(-3, "Could not extract node package: " + output);
+        }
+
+        BaseLib::Io::deleteFile(packagePath);
+
+        auto directories = BaseLib::Io::getDirectories(tempPath, false);
+        if (directories.empty()) {
+          BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+          setRootReadOnly(true);
+          return Ipc::Variable::createError(-3, "Could not find node directory in archive: " + output);
+        }
+
+        auto directory = BaseLib::HelperFunctions::stripNonAlphaNumeric(directories.front());
+
+        //Delete old version of module, if it exists (this method is also called for module updates)
+        BaseLib::ProcessManager::exec("rm -Rf \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+
+        if (BaseLib::ProcessManager::exec("mv \"" + tempPath + directory + "\" \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+          BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+          setRootReadOnly(true);
+          return Ipc::Variable::createError(-4, "Could not move node package: " + output);
+        }
+
+        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+      } catch (const std::exception &ex) {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+        BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+        setRootReadOnly(true);
+        return Ipc::Variable::createError(-32500, "Unknown application error.");
+      }
+
+      //{{{ Compile if necessary
+      auto modulePath = nodesPath + module + "/";
+      if (BaseLib::Io::fileExists(modulePath + "CMakeLists.txt")) {
+        BaseLib::Io::writeFile(modulePath + ".compiling", "");
+        setRootReadOnly(true);
+        startCommandThread("mkdir \"" + modulePath + "build\"; cd \"" + modulePath + "build" + "\"; cmake ..; make -j; sleep 10; cd ..; rm -Rf build; rm .compiling", false);
+      }
+        //}}}
+      else setRootReadOnly(true);
     }
-      //}}}
-    else setRootReadOnly(true);
 
     return std::make_shared<Ipc::Variable>();
   }
