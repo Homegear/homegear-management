@@ -1464,6 +1464,9 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
 
       auto directory = BaseLib::HelperFunctions::stripNonAlphaNumeric(directories.front());
 
+      //Delete old version of module, if it exists (this method is also called for module updates)
+      BaseLib::ProcessManager::exec("rm -Rf \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output);
+
       if (BaseLib::ProcessManager::exec("mv \"" + tempPath + directory + "\" \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         BaseLib::ProcessManager::exec("rm -Rf \"" + tempPath + "\"", GD::bl->fileDescriptorManager.getMax(), output);
         setRootReadOnly(true);
