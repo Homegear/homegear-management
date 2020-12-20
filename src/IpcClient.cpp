@@ -1428,13 +1428,44 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
     if (parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
     if (parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type String.");
 
-    auto module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
     auto url = BaseLib::HelperFunctions::stringReplace(parameters->at(1)->stringValue, "'", ""); //Remove quotes for security reasons - below the URL is surrounded by quotes.
 
     auto nodesPath = GD::bl->settings.nodeBluePath() + "nodes/";
 
-    if (url.at(0) == '/') {
+    if (url.empty()) { //Node-RED node
+      auto module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue, std::unordered_set<char>{'@', '/'});
+
+      setRootReadOnly(false);
+
+      nodesPath = nodesPath + "node-red/";
+      std::string output;
+      if (!BaseLib::Io::directoryExists(nodesPath)) {
+        if (!BaseLib::Io::createDirectory(nodesPath, S_IRWXU | S_IRWXG)) {
+          setRootReadOnly(true);
+          return Ipc::Variable::createError(-1, "Could not create node-red directory.");
+        }
+      }
+
+      GD::out.printInfo("Info: Installing node package...");
+      if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "\"; npm install --no-audit --no-update-notifier --no-fund --save --save-prefix=~ --production " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+        setRootReadOnly(true);
+        return Ipc::Variable::createError(-4, "Could not install node package: " + output);
+      }
+
+      auto moduleParts = BaseLib::HelperFunctions::splitFirst(module, '/');
+      if (!BaseLib::Io::fileExists(nodesPath + "../" + moduleParts.first)) {
+        GD::out.printInfo("Info: Creating link to node package...");
+        if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "../\"; ln -s \"node-red/node_modules/" + moduleParts.first + "\" " + moduleParts.first, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+          setRootReadOnly(true);
+          return Ipc::Variable::createError(-4, "Could not link node package: " + output);
+        }
+      }
+
+      setRootReadOnly(true);
+    } else if (url.at(0) == '/') {
       //Local upload
+      auto module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+
       setRootReadOnly(false);
 
       auto tempPath = parameters->at(1)->stringValue;
@@ -1450,6 +1481,7 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
 
       setRootReadOnly(true);
     } else {
+      auto module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
       auto tempPath = nodesPath + BaseLib::HelperFunctions::getHexString(BaseLib::HelperFunctions::getRandomBytes(32)) + "/";
       std::string output;
 
@@ -1457,6 +1489,7 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
 
       try {
         if (!BaseLib::Io::createDirectory(tempPath, S_IRWXU | S_IRWXG)) {
+          setRootReadOnly(true);
           return Ipc::Variable::createError(-1, "Could not create temporary directory.");
         }
 
@@ -1525,21 +1558,43 @@ Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray &parameters) {
     if (parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
     if (parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 1 is not of type String.");
 
-    auto module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+    auto module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue, std::unordered_set<char>{'@', '/'});
     auto nodesPath = GD::bl->settings.nodeBluePath() + "nodes/";
 
     setRootReadOnly(false);
 
-    try {
+    auto nodeRedNodesPath = nodesPath + "node-red/node_modules/";
+    if (BaseLib::Io::directoryExists(nodeRedNodesPath + module)) {
+      GD::out.printInfo("Info: Uninstalling node package...");
       std::string output;
-      if (BaseLib::ProcessManager::exec("rm -Rf \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+      if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "node-red/\"; npm remove --no-audit --no-update-notifier --no-fund --save " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
-        return Ipc::Variable::createError(-1, "Could not remove module.");
+        return Ipc::Variable::createError(-4, "Could not uninstall node package: " + output);
       }
-    } catch (const std::exception &ex) {
-      GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-      setRootReadOnly(true);
-      return Ipc::Variable::createError(-32500, "Unknown application error.");
+
+      auto moduleParts = BaseLib::HelperFunctions::splitFirst(module, '/');
+      if (BaseLib::Io::linkExists(nodesPath + moduleParts.first) && !BaseLib::Io::directoryExists(nodeRedNodesPath + moduleParts.first)) {
+        GD::out.printInfo("Info: Removing link...");
+        if (BaseLib::ProcessManager::exec("rm -Rf \"" + nodesPath + moduleParts.first + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+          setRootReadOnly(true);
+          return Ipc::Variable::createError(-1, "Could not remove module.");
+        }
+      }
+    } else {
+      //@ and "/" are not allowed at the moment for native Node-BLUE nodes, so remove them
+      module = BaseLib::HelperFunctions::stripNonAlphaNumeric(parameters->at(0)->stringValue);
+
+      try {
+        std::string output;
+        if (BaseLib::ProcessManager::exec("rm -Rf \"" + nodesPath + module + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+          setRootReadOnly(true);
+          return Ipc::Variable::createError(-1, "Could not remove module.");
+        }
+      } catch (const std::exception &ex) {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+        setRootReadOnly(true);
+        return Ipc::Variable::createError(-32500, "Unknown application error.");
+      }
     }
 
     setRootReadOnly(true);
