@@ -1447,7 +1447,7 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
       }
 
       GD::out.printInfo("Info: Installing node package...");
-      if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "\"; npm install --no-audit --no-update-notifier --no-fund --save --save-prefix=~ --production " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+      if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "\"; /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm install --no-audit --no-update-notifier --no-fund --save --save-prefix=~ --production " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
         return Ipc::Variable::createError(-4, "Could not install node package: " + output);
       }
@@ -1567,7 +1567,7 @@ Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray &parameters) {
     if (BaseLib::Io::directoryExists(nodeRedNodesPath + module)) {
       GD::out.printInfo("Info: Uninstalling node package...");
       std::string output;
-      if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "node-red/\"; npm remove --no-audit --no-update-notifier --no-fund --save " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+      if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "node-red/\"; /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm remove --no-audit --no-update-notifier --no-fund --save " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
         return Ipc::Variable::createError(-4, "Could not uninstall node package: " + output);
       }
