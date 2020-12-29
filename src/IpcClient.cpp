@@ -1116,8 +1116,6 @@ Ipc::PVariable IpcClient::getSystemInfo(Ipc::PArray &parameters) {
   try {
     auto info = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
 
-    info->structValue->emplace("repositoryType", std::make_shared<Ipc::Variable>(GD::settings.repositoryType()));
-
     {
       if (GD::settings.system().empty()) {
         std::string output;
@@ -1437,26 +1435,28 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
 
       setRootReadOnly(false);
 
-      nodesPath = nodesPath + "node-red/";
+      auto nodeRedNodesPath = GD::bl->settings.nodeBlueDataPath() + "node-red/";
       std::string output;
-      if (!BaseLib::Io::directoryExists(nodesPath)) {
-        if (!BaseLib::Io::createDirectory(nodesPath, S_IRWXU | S_IRWXG)) {
+      if (!BaseLib::Io::directoryExists(nodeRedNodesPath)) {
+        if (!BaseLib::Io::createDirectory(nodeRedNodesPath, S_IRWXU | S_IRWXG)) {
           setRootReadOnly(true);
           return Ipc::Variable::createError(-1, "Could not create node-red directory.");
         }
       }
 
       GD::out.printInfo("Info: Installing node package...");
-      if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "\"; /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm install --no-audit --no-update-notifier --no-fund --save --save-prefix=~ --production " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+      if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; npm install --no-audit --no-update-notifier --no-fund --save --save-prefix=~ --production " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
+        Ipc::Output::printError("Error: Could not install node package: " + output);
         return Ipc::Variable::createError(-4, "Could not install node package: " + output);
       }
 
       auto moduleParts = BaseLib::HelperFunctions::splitFirst(module, '/');
-      if (!BaseLib::Io::fileExists(nodesPath + "../" + moduleParts.first)) {
+      if (!BaseLib::Io::fileExists(nodesPath + moduleParts.first)) {
         GD::out.printInfo("Info: Creating link to node package...");
-        if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "../\"; ln -s \"node-red/node_modules/" + moduleParts.first + "\" " + moduleParts.first, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+        if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "\"; ln -s \"" + nodeRedNodesPath + "node_modules/" + moduleParts.first + "\" " + moduleParts.first, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
           setRootReadOnly(true);
+          Ipc::Output::printError("Error: Could not link node package: " + output);
           return Ipc::Variable::createError(-4, "Could not link node package: " + output);
         }
       }
@@ -1563,17 +1563,17 @@ Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray &parameters) {
 
     setRootReadOnly(false);
 
-    auto nodeRedNodesPath = nodesPath + "node-red/node_modules/";
-    if (BaseLib::Io::directoryExists(nodeRedNodesPath + module)) {
+    auto nodeRedNodesPath = GD::bl->settings.nodeBlueDataPath() + "node-red/";
+    if (BaseLib::Io::directoryExists(nodeRedNodesPath + "node_modules/" + module)) {
       GD::out.printInfo("Info: Uninstalling node package...");
       std::string output;
-      if (BaseLib::ProcessManager::exec("cd \"" + nodesPath + "node-red/\"; /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm remove --no-audit --no-update-notifier --no-fund --save " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+      if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; npm remove --no-audit --no-update-notifier --no-fund --save " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
         return Ipc::Variable::createError(-4, "Could not uninstall node package: " + output);
       }
 
       auto moduleParts = BaseLib::HelperFunctions::splitFirst(module, '/');
-      if (BaseLib::Io::linkExists(nodesPath + moduleParts.first) && !BaseLib::Io::directoryExists(nodeRedNodesPath + moduleParts.first)) {
+      if (BaseLib::Io::linkExists(nodesPath + moduleParts.first) && !BaseLib::Io::directoryExists(nodeRedNodesPath + "node_modules/" + moduleParts.first)) {
         GD::out.printInfo("Info: Removing link...");
         if (BaseLib::ProcessManager::exec("rm -Rf \"" + nodesPath + moduleParts.first + "\"", GD::bl->fileDescriptorManager.getMax(), output) != 0) {
           setRootReadOnly(true);

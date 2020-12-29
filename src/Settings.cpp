@@ -44,7 +44,6 @@ void Settings::reset() {
   _workingDirectory = _executablePath;
   _logfilePath = "/var/log/homegear/";
   _homegearDataPath = "/var/lib/homegear/";
-  _repositoryType = "stable";
   _system = "";
   _codename = "";
   _secureMemorySize = 65536;
@@ -147,16 +146,13 @@ void Settings::load(std::string filename, std::string executablePath) {
           if (_homegearDataPath.empty()) _homegearDataPath = "/var/lib/homegear/";
           if (_homegearDataPath.back() != '/') _homegearDataPath.push_back('/');
           GD::bl->out.printDebug("Debug: homegearDataPath set to " + _homegearDataPath);
-        } else if (name == "repositorytype") {
-          _repositoryType = BaseLib::HelperFunctions::toLower(value);
-          GD::bl->out.printDebug("Debug: repositoryType set to " + _repositoryType);
         } else if (name == "system") {
           _system = BaseLib::HelperFunctions::toLower(value);
           if (!_system.empty()) _system.at(0) = std::toupper(_system.at(0));
-          GD::bl->out.printDebug("Debug: system set to " + _repositoryType);
+          GD::bl->out.printDebug("Debug: system set to " + _system);
         } else if (name == "codename") {
           _codename = BaseLib::HelperFunctions::toLower(value);
-          GD::bl->out.printDebug("Debug: codename set to " + _repositoryType);
+          GD::bl->out.printDebug("Debug: codename set to " + _codename);
         } else if (name == "rootisreadonly") {
           _rootIsReadOnly = (value == "true");
           GD::bl->out.printDebug("Debug: rootIsReadOnly set to " + std::to_string(_rootIsReadOnly));
