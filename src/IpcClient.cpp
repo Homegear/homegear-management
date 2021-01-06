@@ -1444,8 +1444,12 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
         }
       }
 
-      GD::out.printInfo("Info: Installing node package...");
-      if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; " + GD::executablePath + "homegear-node /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js install --no-audit --no-update-notifier --no-fund --save --save-prefix=~ --production " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+      auto homegearNodePath = GD::executablePath + "homegear-node";
+      if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "/usr/bin/homegear-node";
+      if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "homegear-node";
+      auto installCommand = homegearNodePath + " /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js install --no-audit --no-update-notifier --no-fund --save --save-prefix=~ --production " + module;
+      GD::out.printInfo("Info: Installing node package in \"" + nodeRedNodesPath + "\": " + installCommand);
+      if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; " + installCommand, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
         Ipc::Output::printError("Error: Could not install node package: " + output);
         return Ipc::Variable::createError(-4, "Could not install node package: " + output);
@@ -1565,9 +1569,13 @@ Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray &parameters) {
 
     auto nodeRedNodesPath = GD::bl->settings.nodeBlueDataPath() + "node-red/";
     if (BaseLib::Io::directoryExists(nodeRedNodesPath + "node_modules/" + module)) {
-      GD::out.printInfo("Info: Uninstalling node package...");
+      auto homegearNodePath = GD::executablePath + "homegear-node";
+      if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "/usr/bin/homegear-node";
+      if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "homegear-node";
+      auto uninstallCommand = homegearNodePath + " /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js remove --no-audit --no-update-notifier --no-fund --save " + module;
+      GD::out.printInfo("Info: Uninstalling node package from \"" + nodeRedNodesPath + "\": " + uninstallCommand);
       std::string output;
-      if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; " + GD::executablePath + "homegear-node /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js remove --no-audit --no-update-notifier --no-fund --save " + module, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
+      if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; " + uninstallCommand, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
         return Ipc::Variable::createError(-4, "Could not uninstall node package: " + output);
       }
