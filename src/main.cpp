@@ -34,7 +34,9 @@
 
 #include <malloc.h>
 #include <sys/prctl.h> //For function prctl
+#ifdef BSDSYSTEM
 #include <sys/sysctl.h> //For BSD systems
+#endif
 #include <sys/resource.h> //getrlimit, setrlimit
 #include <sys/file.h> //flock
 #include <sys/types.h>
@@ -168,7 +170,7 @@ void getExecutablePath(int argc, char *argv[]) {
   }
   path[length] = '\0';
   GD::executablePath = std::string(path);
-  GD::executablePath = GD::executablePath.substr(0, GD::executablePath.find_last_of("/") + 1);
+  GD::executablePath = GD::executablePath.substr(0, GD::executablePath.find_last_of('/') + 1);
 #endif
 
   GD::executableFile = std::string(argc > 0 ? argv[0] : "homegear");
@@ -392,7 +394,7 @@ void startUp() {
     GD::ipcClient.reset(new IpcClient(GD::settings.socketPath() + "homegearIPC.sock"));
     GD::ipcClient->start();
 
-    BaseLib::ProcessManager::startSignalHandler(); //Needs to be called before starting any threads
+    BaseLib::ProcessManager::startSignalHandler(GD::bl->threadManager); //Needs to be called before starting any threads
     GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
 
     GD::out.printMessage("Startup complete.");
@@ -514,6 +516,7 @@ int main(int argc, char *argv[]) {
     // {{{ Load settings
     GD::out.printInfo("Loading settings from " + GD::configPath + "management.conf");
     GD::settings.load(GD::configPath + "management.conf", GD::executablePath);
+    GD::bl->settings.load(GD::configPath + "main.conf", GD::executablePath);
     if (GD::runAsUser.empty()) GD::runAsUser = GD::settings.runAsUser();
     if (GD::runAsGroup.empty()) GD::runAsGroup = GD::settings.runAsGroup();
     if ((!GD::runAsUser.empty() && GD::runAsGroup.empty()) || (!GD::runAsGroup.empty() && GD::runAsUser.empty())) {
