@@ -85,6 +85,8 @@ IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath) {
                            std::bind(&IpcClient::serviceCommand, this, std::placeholders::_1));
   _localRpcMethods.emplace("managementWriteCloudMaticConfig",
                            std::bind(&IpcClient::writeCloudMaticConfig, this, std::placeholders::_1));
+  _localRpcMethods.emplace("managementSetSystemTime",
+                           std::bind(&IpcClient::setSystemTime, this, std::placeholders::_1));
 
   // {{{ User management
   _localRpcMethods.emplace("managementSetUserPassword",
@@ -366,6 +368,22 @@ void IpcClient::onConnect() {
     result = invoke("registerRpcMethod", parameters);
     if (result->errorStruct) {
       Ipc::Output::printCritical("Critical: Could not register RPC method managementWriteCloudMaticConfig: "
+                                     + result->structValue->at("faultString")->stringValue);
+      return;
+    }
+
+    parameters = std::make_shared<Ipc::Array>();
+    parameters->reserve(2);
+    parameters->push_back(std::make_shared<Ipc::Variable>("managementSetSystemTime"));
+    parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+    signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+    signature->arrayValue->reserve(2);
+    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+    signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger64));
+    parameters->back()->arrayValue->push_back(signature);
+    result = invoke("registerRpcMethod", parameters);
+    if (result->errorStruct) {
+      Ipc::Output::printCritical("Critical: Could not register RPC method managementSetSystemTime: "
                                      + result->structValue->at("faultString")->stringValue);
       return;
     }
@@ -1369,6 +1387,34 @@ Ipc::PVariable IpcClient::writeCloudMaticConfig(Ipc::PArray &parameters) {
       std::cerr << "Could not set permissions on " << filename << std::endl;
 
     setRootReadOnly(true);
+
+    return std::make_shared<Ipc::Variable>();
+  }
+  catch (const std::exception &ex) {
+    GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+  }
+  return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::setSystemTime(Ipc::PArray &parameters) {
+  try {
+    if (parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+    if (parameters->at(0)->type != Ipc::VariableType::tInteger && parameters->at(0)->type != Ipc::VariableType::tInteger64)
+      return Ipc::Variable::createError(-1,
+                                        "Parameter 1 is not of type Integer.");
+
+    int64_t timestamp = parameters->at(0)->integerValue64;
+
+    timeval tv{};
+    struct timezone tz{};
+    if (gettimeofday(&tv, &tz) != 0) {
+      return Ipc::Variable::createError(-1, "Error getting timezone.");
+    }
+
+    tv.tv_sec = timestamp;
+    if (settimeofday(&tv, &tz) != 0) {
+      return Ipc::Variable::createError(-1, "Error setting time.");
+    }
 
     return std::make_shared<Ipc::Variable>();
   }
