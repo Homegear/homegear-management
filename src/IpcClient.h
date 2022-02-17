@@ -95,6 +95,7 @@ class IpcClient : public Ipc::IIpcClient {
   Ipc::PVariable serviceCommand(Ipc::PArray &parameters);
   Ipc::PVariable setConfigurationEntry(Ipc::PArray &parameters);
   Ipc::PVariable writeCloudMaticConfig(Ipc::PArray &parameters);
+  Ipc::PVariable setSystemTime(Ipc::PArray &parameters);
   // }}}
 
   // {{{ User management
