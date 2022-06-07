@@ -1493,7 +1493,7 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
       auto homegearNodePath = GD::executablePath + "homegear-node";
       if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "/usr/bin/homegear-node";
       if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "homegear-node";
-      auto installCommand = (GD::bl->settings.nodeOptions().empty() ? "" : "NODE_OPTIONS=" + GD::bl->settings.nodeOptions() + " ") + homegearNodePath + " /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js install --no-audit --no-update-notifier --no-fund --save --unsafe-perm --save-prefix=~ --production --color false " + module + " 2>/dev/null";
+      auto installCommand = (GD::bl->settings.nodeOptions().empty() ? "" : "NODE_OPTIONS=" + GD::bl->settings.nodeOptions() + " ") + homegearNodePath + " /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js install --no-audit --no-update-notifier --no-fund --save --unsafe-perm --save-prefix=~ --production --color false " + module + " 2>&1";
       GD::out.printInfo("Info: Installing node package in \"" + nodeRedNodesPath + "\": " + installCommand);
       if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; " + installCommand, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
