@@ -5,7 +5,7 @@ AM_LDFLAGS = -Wl,-rpath=/lib/homegear -Wl,-rpath=/usr/lib/homegear -Wl,-rpath=/u
 
 bin_PROGRAMS = homegear-management
 homegear_management_SOURCES = IpcClient.cpp main.cpp Settings.cpp GD.cpp
-homegear_management_LDADD = -lpthread -lhomegear-base -lgcrypt -lgnutls -lhomegear-ipc
+homegear_management_LDADD = -lpthread -lhomegear-base -lc1-net -lz -lgcrypt -lgnutls -lhomegear-ipc
 
 if BSDSYSTEM
 else
