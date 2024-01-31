@@ -33,6 +33,7 @@
 #include <homegear-base/Managers/ProcessManager.h>
 
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <fcntl.h>
 
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath) {
