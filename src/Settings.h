@@ -59,6 +59,7 @@ class Settings {
   std::unordered_set<std::string> packagesWhitelist() { return _packagesWhitelist; }
   std::unordered_set<std::string> packagesBlacklist() { return _packagesBlacklist; }
   std::unordered_map<std::string, std::unordered_set<std::string>> &settingsWhitelist() { return _settingsWhitelist; }
+  std::string BackupScript() { return backup_script_; }
  private:
   std::string _executablePath;
   std::string _path;
@@ -83,6 +84,7 @@ class Settings {
   std::unordered_set<std::string> _packagesWhitelist;
   std::unordered_set<std::string> _packagesBlacklist;
   std::unordered_map<std::string, std::unordered_set<std::string>> _settingsWhitelist;
+  std::string backup_script_;
 
   void reset();
 };
