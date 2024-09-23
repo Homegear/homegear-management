@@ -33,6 +33,7 @@
 #include <homegear-base/Managers/ProcessManager.h>
 
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <fcntl.h>
 
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath) {
@@ -168,7 +169,7 @@ IpcClient::~IpcClient() {
     _commandInfo.clear();
   }
 
-  for (auto &commandInfo : commandInfoCopy) {
+  for (auto &commandInfo: commandInfoCopy) {
     if (commandInfo.second->thread.joinable()) commandInfo.second->thread.join();
   }
 
@@ -954,7 +955,7 @@ int32_t IpcClient::startCommandThread(std::string command, bool detach, Ipc::PVa
     int32_t runningCommands = 0;
 
     std::list<int32_t> idsToErase;
-    for (auto &commandInfo : commandInfoCopy) {
+    for (auto &commandInfo: commandInfoCopy) {
       if (!commandInfo.second->running) {
         if (Ipc::HelperFunctions::getTime() - commandInfo.second->endTime > 60000) {
           if (commandInfo.second->thread.joinable()) commandInfo.second->thread.join();
@@ -977,7 +978,7 @@ int32_t IpcClient::startCommandThread(std::string command, bool detach, Ipc::PVa
 
     {
       std::lock_guard<std::mutex> commandInfoGuard(_commandInfoMutex);
-      for (auto idToErase : idsToErase) {
+      for (auto idToErase: idsToErase) {
         _commandInfo.erase(idToErase);
       }
 
@@ -1042,7 +1043,7 @@ Ipc::PVariable IpcClient::getCommandStatus(Ipc::PArray &parameters) {
 
       auto result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
       result->arrayValue->reserve(commandInfoCopy.size());
-      for (auto &commandInfo : commandInfoCopy) {
+      for (auto &commandInfo: commandInfoCopy) {
         auto element = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
 
         std::lock_guard<std::mutex> outputGuard(commandInfo.second->outputMutex);
@@ -1239,7 +1240,7 @@ Ipc::PVariable IpcClient::getConfigurationEntry(Ipc::PArray &parameters) {
 
     auto &settingsWhitelist = GD::settings.settingsWhitelist();
 
-    for (auto &entry : settingsWhitelist) {
+    for (auto &entry: settingsWhitelist) {
       std::regex regex(entry.first);
       if (std::regex_match(parameters->at(0)->stringValue, regex)) {
         auto settingIterator = entry.second.find(parameters->at(1)->stringValue);
@@ -1289,7 +1290,7 @@ Ipc::PVariable IpcClient::setConfigurationEntry(Ipc::PArray &parameters) {
 
     BaseLib::HelperFunctions::stringReplace(parameters->at(2)->stringValue, "/", "\\/");
 
-    for (auto &entry : settingsWhitelist) {
+    for (auto &entry: settingsWhitelist) {
       std::regex regex(entry.first);
       if (std::regex_match(parameters->at(0)->stringValue, regex)) {
         auto settingIterator = entry.second.find(parameters->at(1)->stringValue);
@@ -1493,7 +1494,8 @@ Ipc::PVariable IpcClient::installNode(Ipc::PArray &parameters) {
       auto homegearNodePath = GD::executablePath + "homegear-node";
       if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "/usr/bin/homegear-node";
       if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "homegear-node";
-      auto installCommand = (GD::bl->settings.nodeOptions().empty() ? "" : "NODE_OPTIONS=" + GD::bl->settings.nodeOptions() + " ") + homegearNodePath + " /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js install --no-audit --no-update-notifier --no-fund --save --unsafe-perm --save-prefix=~ --production --color false " + module + " 2>/dev/null";
+      auto installCommand = (GD::bl->settings.nodeOptions().empty() ? "" : "NODE_OPTIONS=" + GD::bl->settings.nodeOptions() + " ") + homegearNodePath
+          + " /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js install --no-audit --no-update-notifier --no-fund --save --unsafe-perm --save-prefix=~ --production --color false " + module + " 2>&1";
       GD::out.printInfo("Info: Installing node package in \"" + nodeRedNodesPath + "\": " + installCommand);
       if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; " + installCommand, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
         setRootReadOnly(true);
@@ -1618,7 +1620,8 @@ Ipc::PVariable IpcClient::uninstallNode(Ipc::PArray &parameters) {
       auto homegearNodePath = GD::executablePath + "homegear-node";
       if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "/usr/bin/homegear-node";
       if (!BaseLib::Io::fileExists(homegearNodePath)) homegearNodePath = "homegear-node";
-      auto uninstallCommand = (GD::bl->settings.nodeOptions().empty() ? "" : "NODE_OPTIONS=" + GD::bl->settings.nodeOptions() + " ") + homegearNodePath + " /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js remove --no-audit --no-update-notifier --no-fund --save --unsafe-perm --color false " + module + " 2>/dev/null";
+      auto uninstallCommand = (GD::bl->settings.nodeOptions().empty() ? "" : "NODE_OPTIONS=" + GD::bl->settings.nodeOptions() + " ") + homegearNodePath
+          + " /usr/share/homegear/nodejs/lib/node_modules/npm/bin/npm-cli.js remove --no-audit --no-update-notifier --no-fund --save --unsafe-perm --color false " + module + " 2>/dev/null";
       GD::out.printInfo("Info: Uninstalling node package from \"" + nodeRedNodesPath + "\": " + uninstallCommand);
       std::string output;
       if (BaseLib::ProcessManager::exec("cd \"" + nodeRedNodesPath + "\"; " + uninstallCommand, GD::bl->fileDescriptorManager.getMax(), output) != 0) {
@@ -1673,14 +1676,14 @@ Ipc::PVariable IpcClient::getNodePackages(Ipc::PArray &parameters) {
                                   output);
     BaseLib::HelperFunctions::trim(output);
     auto packages = BaseLib::HelperFunctions::splitAll(output, '\n');
-    for (auto &package : packages) {
+    for (auto &package: packages) {
       output.clear();
       BaseLib::ProcessManager::exec("dpkg-query -L " + package + " 2>/dev/null | grep \".hni$\"",
                                     GD::bl->fileDescriptorManager.getMax(),
                                     output);
       BaseLib::HelperFunctions::trim(output);
       auto files = BaseLib::HelperFunctions::splitAll(output, '\n');
-      for (auto &file : files) {
+      for (auto &file: files) {
         auto parts = BaseLib::HelperFunctions::splitAll(file, '/');
         if (parts.size() < 2) continue;
 
@@ -1747,7 +1750,7 @@ Ipc::PVariable IpcClient::aptUpgrade(Ipc::PArray &parameters) {
     } else return Ipc::Variable::createError(-1, "Parameter has invalid value.");
 
     auto lines = BaseLib::HelperFunctions::splitAll(output, '\n');
-    for (auto &line : lines) {
+    for (auto &line: lines) {
       auto linePair = BaseLib::HelperFunctions::splitFirst(line, '/');
       if (linePair.second.empty()) continue;
 
@@ -1912,7 +1915,9 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray &parameters) {
   try {
     if (!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-    auto time = BaseLib::HelperFunctions::getTime();
+    auto time = BaseLib::HelperFunctions::getTimeString("%Y-%m-%d_%H-%M-%S");
+    auto hostname = BaseLib::Io::getFileContent("/etc/hostname");
+    BaseLib::HelperFunctions::trim(hostname);
     std::string file;
     if (BaseLib::Io::directoryExists("/data/homegear-data/")) {
       if (!BaseLib::Io::directoryExists("/data/homegear-data/backups")) {
@@ -1923,15 +1928,18 @@ Ipc::PVariable IpcClient::createBackup(Ipc::PArray &parameters) {
                                       output);
       }
 
-      file = "/data/homegear-data/backups/" + std::to_string(time) + "_homegear-backup.tar.gz";
-    } else file = "/tmp/" + std::to_string(time) + "_homegear-backup.tar.gz";
+      file = "/data/homegear-data/backups/" + time + "_homegear-backup_" + hostname + ".tar.gz";
+    } else file = "/tmp/" + time + "_homegear-backup_" + hostname + ".tar.gz";
 
     auto metadata = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
     metadata->structValue->emplace("filename", std::make_shared<Ipc::Variable>(file));
 
-    return std::make_shared<Ipc::Variable>(startCommandThread("/var/lib/homegear/scripts/BackupHomegear.sh " + file,
-                                                              false,
-                                                              metadata));
+    auto backup_script = GD::settings.BackupScript();
+    if (!BaseLib::Io::fileExists(backup_script)) {
+      return Ipc::Variable::createError(-2, R"(Backup script file not found. Please check the setting "backupScript" in "management.conf".)");
+    }
+
+    return std::make_shared<Ipc::Variable>(startCommandThread(backup_script + " " + file, false, metadata));
   }
   catch (const std::exception &ex) {
     GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
@@ -2151,7 +2159,7 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray &parameters) {
       std::string currentAssignmentType;
 
       bool parse = false;
-      for (auto &line : lines) {
+      for (auto &line: lines) {
         BaseLib::HelperFunctions::trim(line);
         if (line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0) {
           parse = true;
@@ -2227,7 +2235,7 @@ Ipc::PVariable IpcClient::getNetworkConfiguration(Ipc::PArray &parameters) {
       auto lines = BaseLib::HelperFunctions::splitAll(resolvContent, '\n');
 
       bool parse = false;
-      for (auto &line : lines) {
+      for (auto &line: lines) {
         BaseLib::HelperFunctions::trim(line);
         if (line.compare(0, sizeof("#{{{ homegear-management") - 1, "#{{{ homegear-management") == 0) {
           parse = true;
@@ -2274,16 +2282,16 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray &parameters) {
     std::list<std::string> interfacesLines;
     std::list<std::string> resolvLines;
 
-    for (auto &entry : *parameters->at(0)->structValue) {
+    for (auto &entry: *parameters->at(0)->structValue) {
       if (entry.first == "dns") {
-        for (auto &nameserver : *entry.second->arrayValue) {
+        for (auto &nameserver: *entry.second->arrayValue) {
           if (nameserver->stringValue.empty())
             return Ipc::Variable::createError(-2,
                                               "At least one invalid nameserver entry.");
           resolvLines.push_back("nameserver " + nameserver->stringValue);
         }
       } else {
-        for (auto &ipType : *entry.second->structValue) {
+        for (auto &ipType: *entry.second->structValue) {
           if (ipType.first != "ipv4" && ipType.first != "ipv6")
             return Ipc::Variable::createError(-2,
                                               R"(At least one invalid IP type. Only "ipv4" and "ipv6" are supported.)");
@@ -2341,7 +2349,7 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray &parameters) {
 
       bool before = true;
       bool after = false;
-      for (auto &line : lines) {
+      for (auto &line: lines) {
         BaseLib::HelperFunctions::trim(line);
 
         if (before) interfacesLinesBefore.emplace_back(line);
@@ -2362,7 +2370,7 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray &parameters) {
 
       bool before = true;
       bool after = false;
-      for (auto &line : lines) {
+      for (auto &line: lines) {
         BaseLib::HelperFunctions::trim(line);
 
         if (before) resolvLinesBefore.emplace_back(line);
@@ -2381,18 +2389,18 @@ Ipc::PVariable IpcClient::setNetworkConfiguration(Ipc::PArray &parameters) {
 
     {
       std::ostringstream interfacesStream;
-      for (auto &line : interfacesLinesBefore) interfacesStream << line << '\n';
-      for (auto &line : interfacesLines) interfacesStream << line << '\n';
-      for (auto &line : interfacesLinesAfter) interfacesStream << line << '\n';
+      for (auto &line: interfacesLinesBefore) interfacesStream << line << '\n';
+      for (auto &line: interfacesLines) interfacesStream << line << '\n';
+      for (auto &line: interfacesLinesAfter) interfacesStream << line << '\n';
 
       BaseLib::Io::writeFile("/etc/network/interfaces", interfacesStream.str());
     }
 
     {
       std::ostringstream resolvStream;
-      for (auto &line : resolvLinesBefore) resolvStream << line << '\n';
-      for (auto &line : resolvLines) resolvStream << line << '\n';
-      for (auto &line : resolvLinesAfter) resolvStream << line << '\n';
+      for (auto &line: resolvLinesBefore) resolvStream << line << '\n';
+      for (auto &line: resolvLines) resolvStream << line << '\n';
+      for (auto &line: resolvLinesAfter) resolvStream << line << '\n';
 
       BaseLib::Io::writeFile("/etc/resolvconf/resolv.conf.d/head", resolvStream.str());
     }

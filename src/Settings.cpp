@@ -53,6 +53,7 @@ void Settings::reset() {
   _packagesWhitelist.clear();
   _packagesBlacklist.clear();
   _settingsWhitelist.clear();
+  backup_script_ = "/var/lib/homegear/scripts/BackupHomegear.sh";
 }
 
 bool Settings::changed() {
@@ -83,7 +84,7 @@ void Settings::load(std::string filename, std::string executablePath) {
       return;
     }
 
-    for (auto &element : blackList) {
+    for (auto &element: blackList) {
       _packagesBlacklist.emplace(element);
     }
     GD::bl->out.printDebug("Debug: packagesBlacklist was set");
@@ -167,21 +168,21 @@ void Settings::load(std::string filename, std::string executablePath) {
           GD::bl->out.printDebug("Debug: maxCommandThreads set to " + std::to_string(_maxCommandThreads));
         } else if (name == "allowedservicecommands") {
           std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
-          for (auto &element : elements) {
+          for (auto &element: elements) {
             GD::bl->hf.trim(element);
             _allowedServiceCommands.emplace(element);
           }
           GD::bl->out.printDebug("Debug: allowedServiceCommands was set");
         } else if (name == "controllableservices") {
           std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
-          for (auto &element : elements) {
+          for (auto &element: elements) {
             GD::bl->hf.trim(element);
             _controllableServices.emplace(element);
           }
           GD::bl->out.printDebug("Debug: controllableServices was set");
         } else if (name == "packageswhitelist") {
           std::vector<std::string> elements = GD::bl->hf.splitAll(value, ' ');
-          for (auto &element : elements) {
+          for (auto &element: elements) {
             GD::bl->hf.trim(element);
             _packagesWhitelist.emplace(element);
           }
@@ -194,6 +195,9 @@ void Settings::load(std::string filename, std::string executablePath) {
             _settingsWhitelist[elements.at(0)].emplace(elements.at(i));
           }
           GD::bl->out.printDebug("Debug: controllableServices was set");
+        } else if (name == "backupscript") {
+          backup_script_ = value;
+          GD::bl->out.printDebug("Debug: backupScript set to " + backup_script_);
         } else {
           GD::bl->out.printWarning("Warning: Setting not found: " + std::string(input));
         }
