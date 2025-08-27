@@ -2070,12 +2070,13 @@ Ipc::PVariable IpcClient::createCert(Ipc::PArray &parameters) {
     metadata->structValue->emplace("keyPath",
                                    std::make_shared<Ipc::Variable>("/etc/homegear/ca/private/" + filename + ".key"));
 
-    return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/"
+    return std::make_shared<Ipc::Variable>(startCommandThread("cd /etc/homegear/ca; echo \"subjectAltName=DNS:" + commonName + "\" > newcert.ext;"
+                                                                  + "openssl genrsa -out private/" + filename + ".key 4096; chown homegear:homegear private/"
                                                                   + filename + ".key; chmod 440 private/" + filename
                                                                   + ".key; openssl req -config /etc/homegear/openssl.cnf -new -key private/" + filename
                                                                   + ".key -out newcert.csr -subj \"/C=HG/ST=HG/L=HG/O=HG/CN=" + commonName
                                                                   + "\"; openssl ca -config /etc/homegear/openssl.cnf -in newcert.csr -out certs/" + filename
-                                                                  + ".crt -days 100000 -batch; rm newcert.csr",
+                                                                  + ".crt -extfile newcert.ext -days 100000 -batch; rm newcert.csr; rm newcert.ext",
                                                               false,
                                                               metadata));
   }
