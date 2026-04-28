@@ -31,6 +31,8 @@
 #ifndef CONFIGSETTINGS_H_
 #define CONFIGSETTINGS_H_
 
+#include <cstdint>
+
 #include <homegear-base/BaseLib.h>
 
 class Settings {
